@@ -39,7 +39,7 @@ TEST(remove_tree_does_not_follow_links) {
     fs::path link = tree / "pkg" / "include";
 #ifdef _WIN32
     // A directory junction, as CPM creates when symlinks need privileges.
-    auto r = proc::capture({.argv = {"cmd", "/d", "/c", "mklink", "/J", link.string(), target.string()}});
+    auto r = cpm::proc::capture({.argv = {"cmd", "/d", "/c", "mklink", "/J", link.string(), target.string()}});
     CHECK_EQ(r.exit_code, 0);
 #else
     fs::create_directory_symlink(target, link);

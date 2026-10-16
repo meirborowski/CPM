@@ -196,7 +196,7 @@ TEST(installs_from_a_registry_with_prebuilt_binaries) {
     req.dependencies = [&](const build::Project& p) { return install::ensure(p, config); };
     auto built = build::run_build(req, config);
     CHECK_EQ(built.exit_code, 0);
-    auto out = proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
+    auto out = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
     CHECK(out.out.starts_with("HI APP"));
 
     // Offline reinstall from the caches works.
@@ -275,7 +275,7 @@ TEST(switching_versions_rebuilds_dependents) {
     auto run_app = [&] {
         auto built = build::run_build(req, config);
         CHECK_EQ(built.exit_code, 0);
-        auto out = proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
+        auto out = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
         return out.out.substr(0, out.out.find_first_of("\r\n"));
     };
     install::install(project, {.cwd = app, .add = {"hdr"}}, config);

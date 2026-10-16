@@ -6,6 +6,8 @@
 //   check::fail(file, line, message) and check::TempDir.
 // Each tests/*.test.cpp is its own executable: include this header once. Exit code 0 = all passed
 // (docs/spec/build.md §7).
+// On macOS doctest's implementation includes <sys/sysctl.h>, which declares a global `struct proc`. Next to
+// `using namespace cpm;` a plain `proc::` is then ambiguous, so tests spell out `cpm::proc::`.
 
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>

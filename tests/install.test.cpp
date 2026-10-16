@@ -22,7 +22,6 @@
 #include <windows.h>
 #endif
 
-// cpm::proc is spelled out: macOS declares a global `struct proc` (<sys/proc.h>), so plain `proc::` is ambiguous.
 using namespace cpm;
 namespace fs = std::filesystem;
 

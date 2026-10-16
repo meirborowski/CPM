@@ -29,12 +29,12 @@ std::string value_of(const std::vector<std::pair<std::string, std::string>>& var
 }  // namespace
 
 TEST(cmd_quoting_escapes_metacharacters) {
-    CHECK_EQ(proc::quote_cmd("plain"), "plain");
-    CHECK_EQ(proc::quote_cmd("a&b"), "a^&b");
-    CHECK_EQ(proc::quote_cmd("a b"), "^\"a b^\"");
-    CHECK_EQ(proc::quote_cmd("x|y>z<w"), "x^|y^>z^<w");
-    CHECK_EQ(proc::quote_cmd("(p)!"), "^(p^)^!");
-    CHECK_EQ(proc::quote_cmd("q\"t"), "^\"q\\^\"t^\"");
+    CHECK_EQ(cpm::proc::quote_cmd("plain"), "plain");
+    CHECK_EQ(cpm::proc::quote_cmd("a&b"), "a^&b");
+    CHECK_EQ(cpm::proc::quote_cmd("a b"), "^\"a b^\"");
+    CHECK_EQ(cpm::proc::quote_cmd("x|y>z<w"), "x^|y^>z^<w");
+    CHECK_EQ(cpm::proc::quote_cmd("(p)!"), "^(p^)^!");
+    CHECK_EQ(cpm::proc::quote_cmd("q\"t"), "^\"q\\^\"t^\"");
 }
 
 TEST(environment_variables) {
@@ -57,11 +57,11 @@ TEST(scripts_receive_arguments_exactly) {
     std::vector<std::string> args = {"a b", "x&y", "p|q", "(z)", "q\"t", ""};
 #ifdef _WIN32
     // cmd's echo prints its arguments as written (quoted where needed), not as a program would parse them.
-    auto r = proc::capture(run::script_command("echo", args, test_env(dir.path())));
+    auto r = cpm::proc::capture(run::script_command("echo", args, test_env(dir.path())));
     CHECK_EQ(r.exit_code, 0);
     CHECK_EQ(r.out, "\"a b\" x&y p|q (z) \"q\\\"t\" \"\"\r\n");
 #else
-    auto r = proc::capture(run::script_command("printf '[%s]'", args, test_env(dir.path())));
+    auto r = cpm::proc::capture(run::script_command("printf '[%s]'", args, test_env(dir.path())));
     CHECK_EQ(r.exit_code, 0);
     CHECK_EQ(r.out, "[a b][x&y][p|q][(z)][q\"t][]");
 #endif
@@ -70,9 +70,9 @@ TEST(scripts_receive_arguments_exactly) {
 TEST(scripts_run_in_the_project_root_with_the_environment) {
     check::TempDir dir;
 #ifdef _WIN32
-    auto r = proc::capture(run::script_command("echo %CPM_PACKAGE_NAME% %CPM_PROFILE%&& cd", {}, test_env(dir.path())));
+    auto r = cpm::proc::capture(run::script_command("echo %CPM_PACKAGE_NAME% %CPM_PROFILE%&& cd", {}, test_env(dir.path())));
 #else
-    auto r = proc::capture(run::script_command("echo $CPM_PACKAGE_NAME $CPM_PROFILE && pwd", {}, test_env(dir.path())));
+    auto r = cpm::proc::capture(run::script_command("echo $CPM_PACKAGE_NAME $CPM_PROFILE && pwd", {}, test_env(dir.path())));
 #endif
     CHECK_EQ(r.exit_code, 0);
     CHECK(r.out.find("demo release") != std::string::npos);
@@ -81,8 +81,8 @@ TEST(scripts_run_in_the_project_root_with_the_environment) {
 
 TEST(script_exit_codes_propagate) {
     check::TempDir dir;
-    CHECK_EQ(proc::capture(run::script_command("exit 7", {}, test_env(dir.path()))).exit_code, 7);
-    CHECK_EQ(proc::run(run::script_command("exit 3", {}, test_env(dir.path())), {.null_stdin = true}), 3);
+    CHECK_EQ(cpm::proc::capture(run::script_command("exit 7", {}, test_env(dir.path()))).exit_code, 7);
+    CHECK_EQ(cpm::proc::run(run::script_command("exit 3", {}, test_env(dir.path())), {.null_stdin = true}), 3);
 }
 
 TEST(program_command) {

@@ -26,7 +26,10 @@
 
   "profiles": {
     // Release binaries are distributed, so link the C++ runtime statically.
-    "release": { "opt": 2, "runtime": "static" }
+    "release": { "opt": 2, "runtime": "static" },
+    // The Linux release binary: fully static, built against musl in Alpine (.github/workflows/release.yml).
+    // Static glibc binaries are not portable, so this profile is only meant for that build.
+    "dist": { "inherits": "release", "ldflags": ["-static"] }
   },
 
   "platforms": {

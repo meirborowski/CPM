@@ -1,5 +1,7 @@
 # CPM — C++ Package Manager
 
+[![CI](https://github.com/meirborowski/CPM/actions/workflows/ci.yml/badge.svg)](https://github.com/meirborowski/CPM/actions/workflows/ci.yml)
+
 CPM brings the npm/pnpm workflow to C++: one declarative manifest (`cpm.jsonc`), a deterministic lockfile, a project-local `cpm_modules/`, a global ABI-keyed binary cache, and direct Ninja generation. No CMake.
 
 > **Status: early and experimental (v0.1).** `cpm init`, `install`, `remove`, `build`, `run` and `test` work with GCC and Clang, for registry, git and path dependencies. So far CPM has only been tested on Windows with MinGW-w64 GCC 13. The Linux and macOS code paths exist but have not been run yet. MSVC is not supported yet, and there is no public package registry yet (see [Registries](#registries)).
@@ -11,6 +13,18 @@ CPM brings the npm/pnpm workflow to C++: one declarative manifest (`cpm.jsonc`),
 - **Build once, reuse everywhere.** Dependencies are built once per ABI fingerprint (compiler, standard, flags, platform) into a shared store and linked into each project's `cpm_modules/`.
 - **Static registries.** A registry is any directory or static HTTPS host. Archives are verified by SHA-256, and a matching prebuilt binary is used instead of building from source.
 - **No dependencies.** CPM is plain C++23 with no third-party code, and it builds itself.
+
+## Install
+
+Prebuilt binaries are attached to each [GitHub Release](https://github.com/meirborowski/CPM/releases). Unpack the archive for your platform and put `cpm` (`cpm.exe` on Windows) on your `PATH`:
+
+| Platform | Archive |
+|---|---|
+| Windows x64 | `cpm-<version>-x86_64-windows.zip` (statically linked, MinGW-w64) |
+| Linux x64 | `cpm-<version>-x86_64-linux.tar.gz` (fully static, runs on any distribution) |
+| macOS, Apple silicon | `cpm-<version>-aarch64-macos.tar.gz` (macOS 13.3 or newer) |
+
+`SHA256SUMS` in the release lists the archives' checksums. CPM drives tools it finds on `PATH`: a C++ compiler (GCC 13+ or Clang 17+) and [Ninja](https://ninja-build.org) 1.10+ to build, plus `git`, `curl` and `tar` for git and registry dependencies.
 
 ## Quick start
 
@@ -84,6 +98,14 @@ The [specification](docs/spec/README.md) describes the manifest, dependency reso
 | `scripts/` | Bootstrap (stage 0) and the self-hosting check |
 | `docs/spec/` | The specification |
 | `schema/` | JSON Schemas for `cpm.jsonc`, `cpm-lock.json` and registry indexes |
+
+## Releasing
+
+[CI](.github/workflows/ci.yml) runs the self-hosting check on Windows, Linux (GCC and Clang) and macOS for every push and pull request. [Releases](.github/workflows/release.yml) are cut from tags:
+
+1. Set the new version in `cpm.jsonc` and `src/version.hpp` (a test checks that they match) and commit.
+2. Optional dry run: run the Release workflow by hand (Actions → Release → Run workflow). It builds, tests and packages every platform and uploads the archives as workflow artifacts, without publishing anything.
+3. Tag and push, for example `git tag v0.2.0` and `git push origin v0.2.0`. The workflow checks the tag against the version, then publishes a GitHub Release with the archives and `SHA256SUMS`. Tags with a hyphen (`v0.2.0-rc.1`) become prereleases.
 
 ## License
 

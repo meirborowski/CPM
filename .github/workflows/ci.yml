@@ -1,0 +1,82 @@
+# Runs the full self-hosting check (docs/spec/architecture.md §7) on every supported toolchain:
+# bootstrap, CPM builds itself twice, all tests, `cpm init -y && cpm run`, and a no-op build.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  selfhost:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: Windows (MinGW-w64 GCC), os: windows-2022, cxx: g++ }
+          - { name: Linux (GCC), os: ubuntu-24.04, cxx: g++ }
+          - { name: Linux (Clang), os: ubuntu-24.04, cxx: clang++-18 }
+          - { name: macOS (Apple Clang), os: macos-15, cxx: clang++ }
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install MinGW-w64 GCC and Ninja (MSYS2 UCRT64)
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-ninja
+      - name: Put MSYS2 UCRT64 first on PATH
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-Content $env:GITHUB_PATH "${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin"
+
+      - name: Install Ninja (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build ${{ matrix.cxx == 'clang++-18' && 'clang-18' || '' }}
+      - name: Install Ninja (macOS)
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Toolchain
+        shell: bash
+        run: |
+          ${{ matrix.cxx }} --version
+          ninja --version
+
+      - name: Self-host (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CXX: ${{ matrix.cxx }}
+          CPM_HOME: ${{ runner.temp }}/cpm-home
+        run: ./scripts/selfhost.ps1
+      - name: Self-host
+        if: runner.os != 'Windows'
+        env:
+          CXX: ${{ matrix.cxx }}
+          CPM_HOME: ${{ runner.temp }}/cpm-home
+        run: sh scripts/selfhost.sh
+
+      - name: Upload CPM logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ matrix.os }}-${{ matrix.cxx }}
+          path: |
+            ${{ runner.temp }}/cpm-home/logs
+            cpm_modules/.cache/*/build.ninja
+          if-no-files-found: ignore

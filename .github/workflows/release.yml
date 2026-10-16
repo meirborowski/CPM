@@ -1,0 +1,144 @@
+# Builds release binaries and publishes them as a GitHub Release when a version tag (v1.2.3) is pushed.
+# Running it by hand (workflow_dispatch) builds and uploads the archives as workflow artifacts only:
+# a dry run of the release that publishes nothing.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check that the tag matches cpm.jsonc and src/version.hpp
+        id: version
+        run: |
+          manifest=$(sed -n 's/^  "version": "\(.*\)",$/\1/p' cpm.jsonc)
+          header=$(sed -n 's/.*version = "\(.*\)";$/\1/p' src/version.hpp)
+          echo "cpm.jsonc: $manifest, src/version.hpp: $header, ref: $GITHUB_REF"
+          if [ -z "$manifest" ] || [ "$manifest" != "$header" ]; then
+            echo "::error::cpm.jsonc ($manifest) and src/version.hpp ($header) disagree"; exit 1
+          fi
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$manifest" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match version $manifest"; exit 1
+          fi
+          echo "version=$manifest" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: version
+    name: ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      matrix:
+        include:
+          - { target: x86_64-windows, os: windows-2022, profile: release }
+          # Fully static against musl, so the binary runs on any x86_64 Linux distribution.
+          - { target: x86_64-linux, os: ubuntu-24.04, profile: dist }
+          - { target: aarch64-macos, os: macos-15, profile: release }
+    env:
+      ARCHIVE: cpm-${{ needs.version.outputs.version }}-${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install MinGW-w64 GCC and Ninja (MSYS2 UCRT64)
+        if: runner.os == 'Windows'
+        id: msys2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: false
+          install: mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-ninja
+      - name: Build and test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CPM_HOME: ${{ runner.temp }}/cpm-home
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $PSNativeCommandUseErrorActionPreference = $true
+          $env:PATH = "${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin;$env:PATH"
+          ./scripts/bootstrap.ps1
+          cpm_modules/.cache/bootstrap/cpm.exe build --profile ${{ matrix.profile }}
+          build/${{ matrix.profile }}/cpm.exe test --profile ${{ matrix.profile }}
+
+      - name: Build and test (Linux, in Alpine)
+        if: runner.os == 'Linux'
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src -e CPM_HOME=/tmp/cpm-home -e HOST_IDS="$(id -u):$(id -g)" \
+            alpine:3.22 sh -euxc '
+              apk add --no-cache g++ ninja-is-really-ninja git tar ca-certificates
+              sh scripts/bootstrap.sh
+              cpm_modules/.cache/bootstrap/cpm build --profile ${{ matrix.profile }}
+              build/${{ matrix.profile }}/cpm test --profile ${{ matrix.profile }}
+              chown -R "$HOST_IDS" build cpm_modules'
+          file build/${{ matrix.profile }}/cpm
+          file build/${{ matrix.profile }}/cpm | grep -q 'statically linked'
+
+      - name: Build and test (macOS)
+        if: runner.os == 'macOS'
+        env:
+          CXX: clang++
+          CPM_HOME: ${{ runner.temp }}/cpm-home
+          # std::format needs macOS 13.3 or newer.
+          MACOSX_DEPLOYMENT_TARGET: '13.3'
+        run: |
+          brew install ninja
+          sh scripts/bootstrap.sh
+          cpm_modules/.cache/bootstrap/cpm build --profile ${{ matrix.profile }}
+          build/${{ matrix.profile }}/cpm test --profile ${{ matrix.profile }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory $env:ARCHIVE | Out-Null
+          Copy-Item build/${{ matrix.profile }}/cpm.exe, LICENSE, README.md $env:ARCHIVE
+          & "${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin\strip.exe" "$env:ARCHIVE/cpm.exe"
+          & "$env:ARCHIVE/cpm.exe" --version
+          Compress-Archive -Path $env:ARCHIVE -DestinationPath "$env:ARCHIVE.zip"
+      - name: Package
+        if: runner.os != 'Windows'
+        run: |
+          mkdir "$ARCHIVE"
+          cp build/${{ matrix.profile }}/cpm LICENSE README.md "$ARCHIVE"/
+          strip "$ARCHIVE/cpm"
+          "$ARCHIVE/cpm" --version
+          tar -czf "$ARCHIVE.tar.gz" "$ARCHIVE"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.ARCHIVE }}
+          path: ${{ env.ARCHIVE }}.*
+          if-no-files-found: error
+
+  publish:
+    if: github.ref_type == 'tag'
+    needs: [version, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum cpm-* | tee SHA256SUMS
+      - name: Create the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prerelease=
+          case "$GITHUB_REF_NAME" in *-*) prerelease=--prerelease ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "CPM ${{ needs.version.outputs.version }}" --generate-notes $prerelease

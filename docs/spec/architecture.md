@@ -278,6 +278,7 @@ schema/          JSON Schemas (manifest, lockfile, registry index)
 src/             main.cpp and the modules of §3
 tests/           *.test.cpp, support/ (check.hpp over doctest; projects and registries built at test time)
 scripts/         bootstrap.{ps1,sh} (stage 0), selfhost.{ps1,sh}
+.github/         workflows/ci.yml (self-hosting check per toolchain), workflows/release.yml (tagged releases)
 ```
 
 ## 9. Milestones

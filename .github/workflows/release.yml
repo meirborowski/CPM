@@ -106,6 +106,8 @@ jobs:
           & "${{ steps.msys2.outputs.msys2-location }}\ucrt64\bin\strip.exe" "$env:ARCHIVE/cpm.exe"
           & "$env:ARCHIVE/cpm.exe" --version
           Compress-Archive -Path $env:ARCHIVE -DestinationPath "$env:ARCHIVE.zip"
+          # Also the bare executable: on Windows there is no executable bit to lose, so it can be used as is.
+          Copy-Item "$env:ARCHIVE/cpm.exe" "$env:ARCHIVE.exe"
       - name: Package
         if: runner.os != 'Windows'
         run: |

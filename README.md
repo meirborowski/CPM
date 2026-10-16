@@ -20,7 +20,7 @@ Prebuilt binaries are attached to each [GitHub Release](https://github.com/meirb
 
 | Platform | Archive |
 |---|---|
-| Windows x64 | `cpm-<version>-x86_64-windows.zip` (statically linked, MinGW-w64) |
+| Windows x64 | `cpm-<version>-x86_64-windows.zip` (statically linked, MinGW-w64), or the bare `cpm-<version>-x86_64-windows.exe` |
 | Linux x64 | `cpm-<version>-x86_64-linux.tar.gz` (fully static, runs on any distribution) |
 | macOS, Apple silicon | `cpm-<version>-aarch64-macos.tar.gz` (macOS 13.3 or newer) |
 

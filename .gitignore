@@ -1,0 +1,10 @@
+# CPM: linked dependencies and build intermediates (docs/spec/store.md §5), build outputs (build.md §4.1)
+cpm_modules/
+/build/
+compile_commands.json
+
+# OS and editor clutter
+.DS_Store
+Thumbs.db
+*.swp
+*~

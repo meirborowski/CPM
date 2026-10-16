@@ -1,0 +1,7 @@
+# Store and check out text files with LF on every OS. The lockfile format
+# requires LF (docs/spec/lockfile.md §3), and generated files must be byte-identical.
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF for cmd.exe.
+*.bat text eol=crlf
+*.cmd text eol=crlf

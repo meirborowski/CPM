@@ -1,0 +1,270 @@
+# Build: toolchains, profiles and Ninja generation
+
+## Overview: the `cpm build` pipeline
+
+1. **Locate** the project root (walk up from the working directory to the nearest `cpm.jsonc`) and load the manifest.
+2. **Resolve the profile** (default `debug`): built-ins ← manifest ← CLI flags ([manifest.md §6](manifest.md#6-profiles)).
+3. **Select and probe the toolchain** (§1). The probe is cached, so a warm run spawns no processes.
+4. **Compute the ABI fingerprint** ([abi.md](abi.md)).
+5. **Ensure dependencies:** if the lockfile is stale, or `.cpm-modules.json` does not match the lock hash and ABI, run the install pipeline (offline when everything is cached). It builds any missing `lib/<abi16>` (§5) and repoints the `lib` links ([store.md §5](store.md#5-cpm_modules)).
+6. **Plan:** infer targets from the layout, expand the source globs, and compute include directories, definitions and link order (§4).
+7. **Generate** `cpm_modules/.cache/<profile>/build.ninja` (§4.5). Write it only if its content changed, and refresh `compile_commands.json`.
+8. **Run Ninja** (§6) and report.
+
+Steps 1–7 make up the no-op cost. They MUST stay free of subprocesses on a warm cache, apart from Ninja itself.
+
+## 1. Toolchain discovery
+
+### 1.1 Selection order
+
+The first source that names a compiler wins:
+
+1. `--cxx <name|path>` on the command line
+2. the `CXX` environment variable
+3. `"cxx"` in `$CPM_HOME/config.jsonc`
+4. auto-detection on `PATH`: `clang++`, then `g++` (and on Windows, once the MSVC driver exists: `cl.exe` on `PATH`, then the latest Visual Studio found by `vswhere`)
+
+A bare name is looked up on `PATH`. On Windows the lookup tries only `.exe` and `.com`, the extensions `CreateProcess` can start directly, rather than every `PATHEXT` entry. The resolved absolute path identifies the toolchain from then on.
+
+### 1.2 Family and companion tools
+
+- The family comes from the probe macros: `__clang__` with `__apple_build_version__` ⇒ `apple-clang`, `__clang__` ⇒ `clang`, `__GNUC__` ⇒ `gcc`, `_MSC_VER` with no `__clang__` ⇒ `msvc`, `clang-cl` ⇒ `clang-cl`.
+- **Archiver:** for GCC, `gcc-ar` from the compiler's directory with the same prefix and suffix as the compiler (`x86_64-w64-mingw32-g++-13` → `x86_64-w64-mingw32-gcc-ar-13`), falling back to `ar`. For Clang, `llvm-ar` (same directory, then `PATH`), falling back to `ar`. For MSVC, `lib.exe`. Using `gcc-ar`/`llvm-ar` keeps LTO archives working.
+- The linker is the compiler driver itself (`link.exe` for MSVC).
+
+### 1.3 Probe cache
+
+`$CPM_HOME/toolchains.json` maps the absolute compiler path to the probe result:
+
+```json
+{
+  "toolchainsVersion": 1,
+  "toolchains": {
+    "C:/Strawberry/c/bin/g++.exe": {
+      "stamp": { "size": 2482688, "mtime": 1705312000 },
+      "family": "gcc",
+      "version": "13.2.0",
+      "target": "x86_64-w64-mingw32",
+      "ar": "C:/Strawberry/c/bin/gcc-ar.exe",
+      "stdFlags": { "c++20": "-std=c++20", "c++23": "-std=c++23" },
+      "inputs": { "arch": "x86_64", "compiler": "gcc", "crt": "ucrt", "eh": "seh", "os": "windows", "stdlib": "libstdc++", "stdlib.abi": "cxx11", "threads": "posix" }
+    }
+  }
+}
+```
+
+An entry is reused while the compiler file's size and mtime are unchanged. `stdFlags` records the accepted spelling of each standard the first time it is requested. The final name (`-std=c++23`) is tried first, then the provisional one (`-std=c++2b`, `-std=c++2c`).
+
+## 2. Drivers
+
+A **driver** turns the abstract plan into concrete command lines for one compiler family ([architecture.md §4](architecture.md#4-core-data-structures), `cpm::Driver`):
+
+| Responsibility | GCC / Clang driver | MSVC / clang-cl driver (*post-MVP*) |
+|---|---|---|
+| Compile rule and header dependencies | `-MD -MF $out.d`, `deps = gcc` | `/showIncludes`, `deps = msvc`, `msvc_deps_prefix` probed (it is localised) |
+| Object extension | `.o` | `.obj` |
+| Executable | `<name>` / `<name>.exe` | `<name>.exe` |
+| Static library | `lib<name>.a` (including MinGW) | `<name>.lib` |
+| Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + `<name>.lib` |
+| Library search | `-L<dir> -l<name>` | `/LIBPATH:<dir> <name>.lib` |
+| Response files | `@file` | `@file` |
+| Environment | inherited | `vcvars` environment captured once (`cmd /c "vcvars64.bat >nul && set"`), cached, and passed to Ninja |
+
+## 3. Profile to flag mapping
+
+| Setting | GCC / Clang | MSVC (*post-MVP*) |
+|---|---|---|
+| `std` | `-std=c++11` … `-std=c++26` (spelling from the probe cache) | `/std:c++14` (also used for `c++11`, the oldest MSVC mode), `/std:c++17`, `/std:c++20`, `/std:c++latest` (or `/std:c++23preview` if supported) |
+| `opt` `0` / `1` / `2` / `3` / `s` / `z` | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | `/Od` / `/O2` / `/O2` / `/O2` / `/O1` / `/O1` |
+| `debug: true` | `-g` | compile `/Z7`, link `/DEBUG` |
+| `assertions: false` | `-DNDEBUG` | `/DNDEBUG` |
+| `lto: true` | compile and link `-flto` (`-flto=auto` on GCC); archiver `gcc-ar`/`llvm-ar` | compile `/GL`, link `/LTCG` |
+| `sanitizers` | compile and link `-fsanitize=<list> -fno-omit-frame-pointer` | `address` → `/fsanitize=address`; others warn and are dropped |
+| `runtime: static` | link: Linux/macOS `-static-libstdc++ -static-libgcc`; MinGW `-static` | `/MT` instead of `/MD` |
+| `debugRuntime: true` | — | `/MDd` or `/MTd` |
+| `warnings: none` | `-w` | `/W0` |
+| `warnings: default` | `-Wall -Wextra` | `/W4` |
+| `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wnon-virtual-dtor -Woverloaded-virtual` | `/W4 /permissive-` plus the driver's strict lint set |
+| `werror: true` | `-Werror` | `/WX` |
+| PIC (dependency builds, shared libraries; not on Windows) | `-fPIC` | — |
+| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /EHsc /utf-8 /Zc:__cplusplus` |
+| `cxxflags` / `ldflags` | appended last, verbatim | appended last, verbatim |
+
+The colour flag is always passed, so that changing the colour setting never changes command lines and never triggers a rebuild. Ninja strips colour codes itself when its output is not a terminal. CPM makes Ninja follow its own colour decision ([cli.md §1](cli.md#1-global-options)) by setting `CLICOLOR_FORCE=1` when colour is on and `TERM=dumb` when it is off.
+
+Unsupported combinations warn once and are dropped, never silently changed. Examples: sanitizers on MinGW, `memory` with GCC, `thread` together with `address`.
+
+## 4. Build plan and Ninja generation
+
+### 4.1 Build and output directories
+
+Intermediates live under `cpm_modules/` and outputs in a top-level `build/`, so the files people use are easy to find, and deleting `cpm_modules/` (to reinstall dependencies) or `build/` (to clean outputs) never touches the other's job.
+
+```
+cpm_modules/.cache/<profile>/                   # intermediates
+  build.ninja   .ninja_log   .ninja_deps   archives.json
+  obj/<path relative to project root>.o         # obj/src/cli/args.cpp.o, obj/tests/json.test.cpp.o
+  obj/deps/<name>/<path relative to dep root>.o # path dependencies
+  lib/deps/lib<name>.a                          # path dependencies
+
+build/<profile>/                                # outputs
+  <name>[.exe]                                  # executable
+  lib<name>.a                                   # static library
+  lib<name>.so | lib<name>.dylib | lib<name>.dll (+ lib<name>.dll.a import library on MinGW)
+  tests/<stem>[.exe]                            # tests/json.test.exe
+```
+
+Each profile has its own `build.ninja` and output directory, so switching profiles keeps both object trees and Ninja logs warm. CPM writes only inside `build/<profile>/`; other files in `build/` are left alone. `cpm init` adds `/build/` (anchored to the package root, so a source directory such as `src/build/` stays tracked) to `.gitignore`.
+
+### 4.2 Targets
+
+| Ninja target | Contents | Built by |
+|---|---|---|
+| `<name>` (phony) | the root's main output (executable, static library or shared library) | `cpm build` |
+| `all` (phony, **default**) | `<name>` | `cpm build` |
+| `tests` (phony) | every test executable | `cpm test`, `cpm build --tests` |
+| `<stem>` (phony) | one test executable, e.g. `json.test` | `cpm test json` |
+
+### 4.3 Include directories, definitions and link order
+
+**Dependency order:** a topological order of the resolved graph in which every package comes **before** its dependencies. Ties are broken by name. Call it *D*. Dev-only packages are appended at the end and are used only by test targets.
+
+- **Include directories** (`incs`): `src/`, the root's `include/` (if it exists), then `cpm_modules/<pkg>/include` for each `pkg` in *D*. Test translation units add dev-dependency includes and `tests/`.
+- **Definitions:** profile `defines` and `assertions`, then the root's `defines` and `publicDefines`, then the `publicDefines` of every package in *D*, then platform-override additions. Duplicates are removed (first occurrence kept). Conflicting values for the same name are an error.
+- **Link line** for an executable, a shared library or a test: the target's own objects (core objects plus entrypoint, or the root library), then for each library package in *D*: `-Lcpm_modules/<pkg>/lib -l<linkName>`, path-dependency archives, then `systemLibs` of the root and of every package in *D*, deduplicated **keeping the last occurrence**, then the profile `ldflags`. Store archives are also listed as implicit inputs (`| …/libfmt.a`), so a rebuilt dependency triggers a relink.
+
+### 4.4 Path dependencies
+
+Path packages are compiled inside the consumer's graph rather than in a sandbox, so edits to them rebuild incrementally.
+
+- Their translation units use **their own** include directories (their `src/`, their `include`, and their dependencies' includes), their own private `defines`, and the root profile's flags. These are per-edge variable overrides in Ninja.
+- They are archived into `lib/deps/lib<name>.a` and linked like store libraries.
+- `cpm_modules/<name>/include` links to the package's include directory, so consumer code sees a uniform layout.
+
+### 4.5 `build.ninja` format
+
+```ninja
+# Generated by cpm 0.1.0 for hello@0.1.0 (profile: debug, abi: 3f9a1c2b7d4e5a60). Do not edit.
+ninja_required_version = 1.10
+builddir = cpm_modules/.cache/debug
+
+cxx = C$:/Strawberry/c/bin/g++.exe
+ar = C$:/Strawberry/c/bin/gcc-ar.exe
+cxxflags = -std=c++23 -O0 -g -Wall -Wextra -fdiagnostics-color=always
+defines =
+incs = -Isrc -Iinclude -Icpm_modules/fmt/include
+ldflags =
+
+rule cxx
+  command = $cxx -MD -MF $out.d $cxxflags $defines $incs -c $in -o $out
+  depfile = $out.d
+  deps = gcc
+  description = CXX $in
+rule ar
+  command = $ar rcs $out @$out.rsp
+  rspfile = $out.rsp
+  rspfile_content = $in
+  description = AR $out
+rule link
+  command = $cxx @$out.rsp -o $out $ldflags
+  rspfile = $out.rsp
+  rspfile_content = $in $libs
+  description = LINK $out
+
+build cpm_modules/.cache/debug/obj/src/greeting.cpp.o: cxx src/greeting.cpp
+build cpm_modules/.cache/debug/obj/src/main.cpp.o: cxx src/main.cpp
+build build/debug/hello.exe: link $
+    cpm_modules/.cache/debug/obj/src/main.cpp.o $
+    cpm_modules/.cache/debug/obj/src/greeting.cpp.o $
+    | cpm_modules/fmt/lib/libfmt.a
+  libs = -Lcpm_modules/fmt/lib -lfmt
+
+build cpm_modules/.cache/debug/obj/tests/greeting.test.cpp.o: cxx tests/greeting.test.cpp
+  incs = $incs -Itests
+build build/debug/tests/greeting.test.exe: link $
+    cpm_modules/.cache/debug/obj/tests/greeting.test.cpp.o $
+    cpm_modules/.cache/debug/obj/src/greeting.cpp.o $
+    | cpm_modules/fmt/lib/libfmt.a
+  libs = -Lcpm_modules/fmt/lib -lfmt
+
+build hello: phony build/debug/hello.exe
+build greeting.test: phony build/debug/tests/greeting.test.exe
+build all: phony hello
+build tests: phony greeting.test
+default all
+```
+
+Rules:
+
+- **Determinism:** edges are emitted in a fixed order: compile edges sorted by source path, then archive, link and phony edges in target order. The same inputs give a byte-identical file.
+- **Paths** use `/`. Paths inside the project root are relative to it, because Ninja runs with the project root as its working directory. Paths outside it are relative (`../mylib/src/x.cpp`) when they are on the same volume, and absolute otherwise.
+- **Escaping:** in `build` lines, `$` → `$$`, space → `$ `, `:` → `$:`. In variable values, `$` → `$$`. Newlines are never allowed. Arguments that contain spaces are quoted for the command interpreter: MSVC-CRT argv quoting on Windows (Ninja calls `CreateProcess` directly), single quotes on POSIX (`/bin/sh -c`).
+- **Response files** are used for every link and archive step, which avoids the 32 KiB command-line limit on Windows.
+- **Dependency stamp:** with dependencies, CPM writes `cpm_modules/.cache/<profile>/dependencies.stamp` (only when its content changes) listing every dependency's version and identity (integrity, git commit or path) and the ABI, and every compile and link edge depends on it. `cpm_modules` links can point at different files under the same paths, possibly with older timestamps, which Ninja alone would not notice; the stamp makes any dependency change rebuild the dependents.
+- **Stale archive members:** `ar rcs` never removes members. CPM records each archive's member list in `archives.json`. When the list changes, it deletes the archive before running Ninja, so the archive is rebuilt from scratch.
+- **No self-regeneration rule.** CPM always regenerates before invoking Ninja, so Ninja never needs to rerun CPM.
+
+### 4.6 `compile_commands.json`
+
+After generating `build.ninja`, CPM runs `ninja -f <file> -t compdb cxx` and writes the result to `<project>/compile_commands.json`, only if its content changed. Without this file, clangd and IDEs could not find dependency headers.
+
+### 4.7 Shared libraries at run time (*post-MVP for shared-library dependencies*)
+
+- A root `shared-lib` target is supported in the MVP: `-shared`, plus `-fPIC` off Windows. On MinGW it adds `-Wl,--out-implib,<lib>.dll.a`, and every symbol is exported automatically when the code has no `__declspec(dllexport)`.
+- For shared-library **dependencies**, CPM copies their runtime files into `build/<profile>/` after linking on Windows (there is no rpath). On ELF and Mach-O it adds `-Wl,-rpath,<absolute store lib dir>`.
+
+## 5. Dependency builds
+
+When the store has no `lib/<abi16>/` for a registry or git package and the registry offers no matching prebuilt binary, CPM builds it in a **sandbox**:
+
+1. Take the entry's lock (`<entry>/lib/<abi16>`, [store.md §4](store.md#4-atomicity-and-locking)), then check again for a complete directory.
+2. Create `$CPM_HOME/tmp/build-<random>/`.
+3. Plan the package as a library ([manifest.md §4](manifest.md#4-target-inference), with its overlay applied):
+   - sources are absolute paths into the store entry, which is read-only
+   - include directories: its `src/`, its include directory, and the include directories of its resolved dependencies **in the store** (never the consumer's `cpm_modules/`)
+   - definitions: its `defines` and `publicDefines`, its dependencies' `publicDefines`, and its platform overrides
+4. **Flags:** a synthetic profile `{ opt: 2, debug: false, assertions: false, lto: false, warnings: "none" }` combined with every setting that the ABI fingerprint encodes: root `std`, `runtime`, `debugRuntime`, `sanitizers`, `defines.abi`, the exceptions and RTTI flags, and PIC. Artifacts therefore always match their ABI directory.
+5. Write `build.ninja` into the sandbox and run Ninja with output captured to `$CPM_HOME/logs/build-<name>@<version>-<abi16>.log`. `CPATH`, `CPLUS_INCLUDE_PATH` and `LIBRARY_PATH` are cleared for the build, as are `INCLUDE` and `LIB` for non-MSVC toolchains, so headers and libraries from the environment cannot leak in.
+6. Copy the artifacts into a staging `lib/<abi16>.tmp-<random>/`, write `meta.json` and `.complete`, then rename to `lib/<abi16>/`.
+7. Remove the sandbox, unless the build failed and `CPM_KEEP_SANDBOX=1` is set.
+
+Dependencies are built in dependency order, and a failure stops the install. Header-only packages are never built. *Post-MVP:* independent dependencies build in parallel, limited by `-j`.
+
+## 6. Running Ninja
+
+- **Discovery:** `CPM_NINJA`, then `PATH`, then `$CPM_HOME/tools/ninja[.exe]`. If none is found, the error includes install hints. *Post-MVP:* CPM downloads a pinned Ninja release into `tools/`.
+- **Invocation:** `ninja -f cpm_modules/.cache/<profile>/build.ninja [-j N] [-v] <targets>`, with the project root as working directory. `NINJA_STATUS` is set to `[%f/%t] `, and the toolchain environment (MSVC) is applied.
+- **Output:** streamed straight through. CPM adds a header line before it and a summary line after it ([cli.md §4](cli.md#4-output)).
+- **Exit status:** if Ninja exits non-zero, CPM exits with 1 after the compiler output has been shown. A failed build never changes `.cpm-modules.json` or the lockfile.
+- **Replacing the running executable (Windows):** before Ninja runs, if any output path of the requested targets resolves to the running CPM executable, CPM renames that file to `<file>.old`, which Windows allows. At startup CPM deletes any `<own path>.old` it can.
+
+## 7. Tests
+
+- **Discovery:** `tests/*.test.{cpp,cc,cxx}`, one executable per file ([manifest.md §4](manifest.md#4-target-inference)).
+- **Build:** `cpm test [filter…]` builds the matching `<stem>` targets, or `tests` when no filter is given.
+- **Run:** tests run one at a time, sorted by name. For each test:
+  - working directory: the project root
+  - stdin: closed
+  - environment: adds `CPM_TEST=1`, `CPM_PROFILE`, `CPM_PROJECT_ROOT`
+  - timeout: 300 s by default (`--timeout <s>`)
+- **Result:** exit code `0` = pass, `77` = skipped (Automake convention), anything else (or a timeout) = fail.
+- **Output:** captured. It is shown for failing tests, or for every test with `-v`.
+- **Summary and exit status:** a summary line such as `5 passed, 1 skipped, 1 failed in 0.84s` lists the failing tests by name. `cpm test` exits with 1 if any test failed.
+
+## 8. Legacy Bridge (*post-MVP*)
+
+Some packages can only be built with their own build system. An overlay can request a bridged build:
+
+```json
+"manifest": {
+  "type": "static-lib",
+  "build": { "system": "cmake", "options": { "FMT_TEST": "OFF", "FMT_DOC": "OFF" }, "link": ["fmt"] }
+}
+```
+
+- **CMake:** the sandbox runs
+  `cmake -S <entry> -B <sandbox>/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_COMPILER=<cxx> -DCMAKE_CXX_STANDARD=<n> -DCMAKE_CXX_FLAGS=<ABI flags> -DCMAKE_POSITION_INDEPENDENT_CODE=<pic> -DBUILD_SHARED_LIBS=<OFF|ON> -DCMAKE_INSTALL_PREFIX=<sandbox>/prefix -D<options>…`,
+  then `cmake --build`, then `cmake --install`.
+- **Meson:** `meson setup --buildtype=release --default-library=static -Dcpp_std=<std> -Db_staticpic=<pic>`, then `meson install` into the prefix.
+- **Harvest:** `prefix/include/` goes to `lib/<abi16>/include/`. Generated headers can depend on the configuration, so bridged packages export **this** directory as their include directory. The libraries named by `link` (default: every archive in `prefix/lib/`) go to `lib/<abi16>/`. A `meta.json` is written as usual.
+- The bridge toolchain must be the same compiler as the consumer. CMake and Meson are looked up on `PATH`. A missing tool is an error with an install hint.

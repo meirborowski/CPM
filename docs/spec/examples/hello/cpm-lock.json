@@ -1,0 +1,71 @@
+{
+  "lockfileVersion": 1,
+  "importers": {
+    ".": {
+      "dependencies": {
+        "fmt": {
+          "specifier": "^10.2.0",
+          "version": "10.2.1"
+        },
+        "json": {
+          "specifier": "{\"git\":\"https://github.com/nlohmann/json.git\",\"tag\":\"v3.11.3\"}",
+          "version": "3.11.3"
+        },
+        "mylib": {
+          "specifier": "file:../mylib",
+          "version": "0.3.0"
+        }
+      },
+      "devDependencies": {
+        "doctest": {
+          "specifier": "^2.4.11",
+          "version": "2.4.11"
+        }
+      }
+    }
+  },
+  "packages": {
+    "doctest@2.4.11": {
+      "dev": true,
+      "resolution": {
+        "integrity": "sha256:d19641fd9808927514ed24a2e0d0acc1c61158eee6aac60e2a68958e8a26587a",
+        "registry": "https://registry.example.org/cpm/",
+        "type": "registry",
+        "url": "https://registry.example.org/cpm/packages/doctest/doctest-2.4.11.tar.gz"
+      },
+      "std": "c++11",
+      "type": "header-only"
+    },
+    "fmt@10.2.1": {
+      "resolution": {
+        "integrity": "sha256:493805ecc9d155b64e2365962ae8e3927f8afea4a7c84e9e048db2c92b80253a",
+        "registry": "https://registry.example.org/cpm/",
+        "type": "registry",
+        "url": "https://registry.example.org/cpm/packages/fmt/fmt-10.2.1.tar.gz"
+      },
+      "std": "c++11",
+      "type": "static-lib"
+    },
+    "json@3.11.3": {
+      "resolution": {
+        "commit": "e4022eb3b738f5c88125b2c127212f359f14b12b",
+        "ref": "v3.11.3",
+        "type": "git",
+        "url": "https://github.com/nlohmann/json.git"
+      },
+      "std": "c++11",
+      "type": "header-only"
+    },
+    "mylib@0.3.0": {
+      "dependencies": {
+        "fmt": "10.2.1"
+      },
+      "resolution": {
+        "path": "../mylib",
+        "type": "path"
+      },
+      "std": "c++20",
+      "type": "static-lib"
+    }
+  }
+}

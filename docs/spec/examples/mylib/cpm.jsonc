@@ -1,0 +1,10 @@
+// Path dependency used by examples/hello ("mylib": "file:../mylib").
+{
+  "name": "mylib",
+  "version": "0.3.0",
+  "std": "c++20",
+  "type": "static-lib",
+  "dependencies": {
+    "fmt": "^10.0.0"
+  }
+}

@@ -1,0 +1,116 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:cpm:schema:lockfile:1",
+  "title": "CPM lockfile (cpm-lock.json), lockfileVersion 1",
+  "description": "See docs/spec/lockfile.md. Byte-level serialization rules (key order, indentation) are specified there and are not expressible here.",
+  "type": "object",
+  "required": ["lockfileVersion", "importers", "packages"],
+  "additionalProperties": false,
+  "properties": {
+    "lockfileVersion": { "const": 1 },
+    "importers": {
+      "type": "object",
+      "required": ["."],
+      "propertyNames": { "pattern": "^(\\.|[^/\\\\.][^\\\\]*)$" },
+      "additionalProperties": { "$ref": "#/definitions/importer" }
+    },
+    "packages": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/packageKey" },
+      "additionalProperties": { "$ref": "#/definitions/package" }
+    }
+  },
+  "definitions": {
+    "packageName": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "packageKey": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?@(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+    },
+    "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "rootDependency": {
+      "type": "object",
+      "required": ["specifier", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "specifier": { "type": "string", "minLength": 1 },
+        "version": { "$ref": "#/definitions/version" }
+      }
+    },
+    "importer": {
+      "type": "object",
+      "required": ["dependencies", "devDependencies"],
+      "additionalProperties": false,
+      "properties": {
+        "dependencies": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/packageName" },
+          "additionalProperties": { "$ref": "#/definitions/rootDependency" }
+        },
+        "devDependencies": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/definitions/packageName" },
+          "additionalProperties": { "$ref": "#/definitions/rootDependency" }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "required": ["resolution", "type", "std"],
+      "additionalProperties": false,
+      "properties": {
+        "resolution": { "$ref": "#/definitions/resolution" },
+        "type": { "enum": ["static-lib", "shared-lib", "header-only"] },
+        "std": { "enum": ["c++11", "c++14", "c++17", "c++20", "c++23", "c++26"] },
+        "dependencies": {
+          "type": "object",
+          "minProperties": 1,
+          "propertyNames": { "$ref": "#/definitions/packageName" },
+          "additionalProperties": { "$ref": "#/definitions/version" }
+        },
+        "dev": { "const": true }
+      }
+    },
+    "resolution": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["type", "registry", "url", "integrity"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "registry" },
+            "registry": { "type": "string", "minLength": 1 },
+            "url": { "type": "string", "minLength": 1 },
+            "integrity": { "$ref": "#/definitions/integrity" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "url", "commit"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "git" },
+            "url": { "type": "string", "minLength": 1 },
+            "ref": { "type": "string", "minLength": 1 },
+            "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["type", "path"],
+          "additionalProperties": false,
+          "properties": {
+            "type": { "const": "path" },
+            "path": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]*$" }
+          }
+        }
+      ]
+    }
+  }
+}

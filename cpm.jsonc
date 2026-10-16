@@ -1,0 +1,36 @@
+// CPM builds itself with CPM. Fresh clone: run scripts/bootstrap.ps1 (or scripts/bootstrap.sh)
+// once, then use `cpm build`, `cpm test`. See docs/spec/architecture.md §7.
+{
+  "$schema": "./schema/cpm.schema.json",
+  "name": "cpm",
+  "version": "0.1.0",
+  "description": "C++ package manager and build system",
+  "license": "MIT",
+  "std": "c++23",
+  "type": "executable",
+
+  "scripts": {
+    "selfhost": "pwsh -NoProfile -File scripts/selfhost.ps1"
+  },
+
+  // CPM itself has no runtime dependencies, so the bootstrap stays a single compiler call.
+  "devDependencies": {
+    // The test framework behind tests/support/check.hpp. Its repository has no cpm.jsonc, so the
+    // overlay describes it: headers only, included as <doctest/doctest.h> from the repository root.
+    "doctest": {
+      "git": "https://github.com/doctest/doctest.git",
+      "tag": "v2.4.11",
+      "manifest": { "type": "header-only", "std": "c++11", "include": "." }
+    }
+  },
+
+  "profiles": {
+    // Release binaries are distributed, so link the C++ runtime statically.
+    "release": { "opt": 2, "runtime": "static" }
+  },
+
+  "platforms": {
+    "windows": { "systemLibs": ["shell32"] },
+    "unix": { "systemLibs": ["pthread"] }
+  }
+}

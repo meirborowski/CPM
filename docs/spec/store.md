@@ -1,0 +1,171 @@
+# Global store and `cpm_modules`
+
+## 1. CPM home
+
+`$CPM_HOME` is the `CPM_HOME` environment variable if set, otherwise `%USERPROFILE%\.cpm` on Windows and `$HOME/.cpm` elsewhere. Tests and CI SHOULD set `CPM_HOME` to an isolated directory.
+
+```
+$CPM_HOME/
+  config.jsonc                     # user configuration (cli.md §5)
+  toolchains.json                  # toolchain probe cache (build.md §1.3)
+  store/
+    .layout-version                # "1"
+    <name>@<version>[+<suffix>]/   # store entries (§2)
+  cache/
+    downloads/sha256-<hex>.tar.gz  # downloaded archives, content-addressed
+    git/<sha256(url)[:16]>.git/    # bare git mirrors
+    registry/<sha256(base)[:16]>/index/<name>.json
+  tmp/                             # staging and sandbox build directories (same volume as store/)
+  locks/                           # lock files (§4)
+  logs/                            # logs of dependency builds
+  tools/                           # downloaded tools such as ninja (post-MVP)
+```
+
+The store and the caches can be shared by every project and every CPM process on the machine. Deleting `cache/` is always safe. Deleting `store/` is safe too: projects relink and rebuild on the next `cpm install`/`cpm build`.
+
+## 2. Store entries
+
+### 2.1 Naming and contents
+
+| Source | Entry directory |
+|---|---|
+| registry | `<name>@<version>` |
+| registry, when an entry with that name already exists with a **different** integrity (same name and version from two registries) | `<name>@<version>+s<first 8 hex of integrity>` |
+| git | `<name>@<version>+g<first 12 hex of commit>` |
+| path | none. Path packages are used in place and built inside the consumer's build graph ([build.md §4.4](build.md#44-path-dependencies)). |
+
+```
+store/fmt@10.2.1/
+  .integrity                 # "sha256:<hex>" (registry) or "git:<commit>" (git)
+  .source.json               # the lock "resolution" object this entry came from
+  .complete                  # written last: marks the source extraction as complete
+  cpm.jsonc                  # the package manifest, if the archive has one
+  .cpm-overlay.json          # the effective overlay, if any (canonical JSON)
+  include/ …                 # as extracted (the include dir may be elsewhere if an overlay says so)
+  src/ …
+  lib/
+    3f9a1c2b7d4e5a60/        # one directory per ABI (abi.md)
+      libfmt.a
+      meta.json
+      .complete
+```
+
+- Everything outside `lib/` is the extracted package and is **immutable**. CPM never writes there after the entry is complete.
+- An entry without `.complete`, or an ABI directory without its own `.complete`, is garbage. It is deleted the next time CPM touches that entry, while holding its lock.
+- On reuse, `.integrity` MUST equal the integrity CPM expects, otherwise the entry is treated as a store conflict (see the naming table).
+
+### 2.2 `lib/<abi16>/meta.json`
+
+```json
+{
+  "metaVersion": 1,
+  "package": { "name": "fmt", "version": "10.2.1", "integrity": "sha256:493805ec…" },
+  "abi": {
+    "hash": "3f9a1c2b7d4e5a60c1…(64 hex)",
+    "inputs": { "abi.scheme": "1", "arch": "x86_64", "compiler": "gcc", "…": "…" }
+  },
+  "artifacts": [
+    { "kind": "static-lib", "file": "libfmt.a" }
+  ],
+  "linkName": "fmt",
+  "publicDefines": [],
+  "systemLibs": [],
+  "builtBy": "cpm 0.1.0",
+  "origin": "source"
+}
+```
+
+| Key | Description |
+|---|---|
+| `abi.inputs` | The full fingerprint inputs ([abi.md](abi.md)). They are checked on every use: if the inputs differ under the same directory name (a hash prefix collision or a corrupt entry), the directory is treated as missing. |
+| `artifacts[].kind` | `static-lib`, `shared-lib` (the runtime `.so`/`.dylib`/`.dll`) or `import-lib` (MinGW `.dll.a`, MSVC `.lib`). |
+| `linkName` | The name passed to the linker (`-l<linkName>`). |
+| `publicDefines`, `systemLibs` | Effective values after platform overrides. Dependents use them without re-reading the manifest. |
+| `origin` | `source` (built locally) or `prebuilt` (downloaded from a registry). |
+
+## 3. Other home directories
+
+- `cache/downloads/`: archives named by content hash. An archive found there with the right hash is not downloaded again. `--offline` fetches only from here.
+- `cache/git/`: bare mirrors (`git clone --mirror`, then `git fetch` to update). A store entry is created from `git archive --format=tar <commit>` piped into the same extraction and validation path as source archives.
+- `cache/registry/`: cached index documents ([registry.md §5](registry.md#5-client-behaviour)).
+- `logs/`: `build-<name>@<version>-<abi16>.log`, the full output of each dependency build. CPM prints the log path and its last 40 lines when a build fails.
+
+## 4. Atomicity and locking
+
+- **Staging:** every store mutation is staged in `tmp/<random>/` and moved into place with a single `rename`. `tmp/` is on the same volume as `store/`, so the rename is atomic. The `.complete` marker is written into the staged directory before the rename.
+- **Locks:** CPM holds an exclusive OS file lock (`LockFileEx` / `flock`) on `locks/<sha256(key)[:16]>.lock` while it fetches, extracts or builds a store item. `key` is the entry directory name for source extraction and `<entry>/lib/<abi16>` for builds. After taking the lock, CPM checks again whether the item became complete in the meantime. If CPM has to wait more than 1 second it prints `waiting for another cpm process (fmt@10.2.1)…`.
+- Locks are advisory and released automatically if a process dies. Stale `tmp/` directories older than 24 hours are removed opportunistically.
+
+## 5. `cpm_modules/`
+
+```
+<project>/
+  cpm_modules/
+    .cpm-modules.json              # link state (§5.1)
+    fmt/
+      include  → $CPM_HOME/store/fmt@10.2.1/include
+      lib      → $CPM_HOME/store/fmt@10.2.1/lib/3f9a1c2b7d4e5a60
+    json/
+      include  → $CPM_HOME/store/json@3.11.3+g9cca280a0b1c/single_include   # overlay "include": "single_include"
+    mylib/
+      include  → <project>/../mylib/include                  # path package: no lib link
+    .cache/                                                  # build intermediates (build.md §4.1)
+      debug/   build.ninja  .ninja_log  .ninja_deps  archives.json  obj/…  lib/deps/…
+      release/ …
+      bootstrap/                                             # only in the CPM repository itself
+  build/                                                     # build outputs (build.md §4.1)
+    debug/   hello.exe  tests/…
+    release/ …
+  compile_commands.json
+```
+
+- `cpm_modules/<name>/` is a **real directory**. Only `include` and `lib` inside it are links. That leaves room for more entries later (`bin`, `share`) and avoids one link mixing headers with artifacts.
+- `include` points to the package's effective include directory. `lib` points to the store ABI directory that matches the **active** ABI of the last build or install. When `cpm build` runs with a profile or toolchain whose ABI differs, CPM ensures the store has that ABI directory (building it if needed) and repoints `lib` before invoking Ninja.
+- Header-only packages have no `lib`. Path packages have no `lib` because their objects live in `.cache/<profile>/obj/deps/<name>/`.
+- `cpm_modules/` is disposable: deleting it loses nothing that `cpm install` cannot restore, usually without network access.
+
+### 5.1 `.cpm-modules.json`
+
+```json
+{
+  "cpmModulesVersion": 1,
+  "lockHash": "sha256:…",
+  "abi": "3f9a1c2b7d4e5a60",
+  "linkMode": "junction",
+  "packages": {
+    "fmt": {
+      "include": "C:/Users/me/.cpm/store/fmt@10.2.1/include",
+      "lib": "C:/Users/me/.cpm/store/fmt@10.2.1/lib/3f9a1c2b7d4e5a60",
+      "version": "10.2.1"
+    },
+    "mylib": { "include": "C:/work/mylib/include", "version": "0.3.0" }
+  }
+}
+```
+
+`cpm build` uses this file for its fast up-to-date check: the lock's SHA-256 equals `lockHash`, and the active ABI equals `abi`. If both match, no link or store work is done. Paths here are informative. The links themselves are authoritative and are verified when the check fails.
+
+## 6. Link creation
+
+CPM creates each link with the first method that works, and records it in `linkMode`:
+
+| OS | Order |
+|---|---|
+| Linux, macOS | absolute symlink → copy |
+| Windows | symlink (`CreateSymbolicLinkW` with `SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE`, which works in Developer Mode) → **directory junction** (`FSCTL_SET_REPARSE_POINT`, needs no privileges, same machine only) → copy |
+
+- The configuration key `linkMode` (`auto` | `symlink` | `junction` | `copy`) can force a method.
+- When CPM falls back to `copy`, it warns once per project. Copies are refreshed whenever `.cpm-modules.json` is out of date.
+- Hard links are not used for directories, which they cannot be applied to. File-level hard links are reserved for a future optimisation.
+
+## 7. Safe deletion (normative)
+
+Links into the store make naive recursive deletion **dangerous**. Some standard library implementations, including libstdc++ on MinGW, do not report junctions as symlinks. `std::filesystem::remove_all(cpm_modules)` could then descend into the store and delete it.
+
+- CPM MUST delete trees only through `fsx::remove_tree`. That function never descends into a symlink or a reparse point of any kind (`FILE_ATTRIBUTE_REPARSE_POINT`). It removes such entries as links: `RemoveDirectoryW` for directory junctions and symlinks, `DeleteFileW` for file symlinks, `unlink` on POSIX.
+- `fsx::remove_tree` refuses to delete `$CPM_HOME`, `$CPM_HOME/store`, the filesystem root, or the user's home directory.
+- Removing a link never touches its target.
+
+## 8. Garbage collection (*post-MVP*)
+
+`cpm store prune` deletes entries that no registered project references. Projects register themselves in `$CPM_HOME/projects.json` on every install, and prune removes registrations for project directories that no longer exist. `cpm store status` reports sizes and verifies integrity.

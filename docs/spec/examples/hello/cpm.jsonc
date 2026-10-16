@@ -1,0 +1,39 @@
+// Example manifest (docs/spec/manifest.md). Hashes, URLs and versions in these examples are illustrative.
+{
+  "$schema": "../../../../schema/cpm.schema.json",
+  "name": "hello",
+  "version": "0.1.0",
+  "description": "Says hello",
+  "license": "MIT",
+  "std": "c++23",
+  "type": "executable",                    // inferred from src/main.cpp if omitted
+
+  "scripts": {
+    "start": "cpm run",
+    "fmt": "clang-format -i src/*.cpp include/**/*.hpp"
+  },
+
+  "dependencies": {
+    "fmt": "^10.2.0",                      // default registry
+    "json": {                              // git package without a cpm.jsonc: overlay supplies the manifest
+      "git": "https://github.com/nlohmann/json.git",
+      "tag": "v3.11.3",
+      "manifest": { "type": "header-only", "std": "c++11", "include": "single_include" },
+    },
+    "mylib": "file:../mylib",              // local path
+  },
+  "devDependencies": {
+    "doctest": "^2.4.11",
+  },
+
+  "profiles": {
+    "debug":   { "sanitizers": ["address", "undefined"] },
+    "release": { "lto": true },
+    "profiling": { "inherits": "release", "debug": true },
+  },
+
+  "platforms": {
+    "windows": { "systemLibs": ["ws2_32"] },
+    "unix":    { "systemLibs": ["pthread"] },
+  },
+}

@@ -1,0 +1,27 @@
+{
+  "lockfileVersion": 1,
+  "importers": {
+    ".": {
+      "dependencies": {},
+      "devDependencies": {
+        "doctest": {
+          "specifier": "{\"git\":\"https://github.com/doctest/doctest.git\",\"tag\":\"v2.4.11\"}",
+          "version": "2.4.11"
+        }
+      }
+    }
+  },
+  "packages": {
+    "doctest@2.4.11": {
+      "dev": true,
+      "resolution": {
+        "commit": "ae7a13539fb71f270b87eb2e874fbac80bc8dda2",
+        "ref": "v2.4.11",
+        "type": "git",
+        "url": "https://github.com/doctest/doctest.git"
+      },
+      "std": "c++11",
+      "type": "header-only"
+    }
+  }
+}

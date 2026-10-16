@@ -1,0 +1,234 @@
+# Command-line interface
+
+```
+cpm [global options] <command> [command options] [arguments] [-- passthrough…]
+```
+
+## 1. Global options
+
+Global options may appear before or after the command, but not after `--`.
+
+| Option | Description |
+|---|---|
+| `-C, --dir <path>` | Run as if started in `<path>`. |
+| `-v, --verbose` | More output. Repeat (`-vv`) to also print every subprocess command line. |
+| `-q, --quiet` | Errors only. |
+| `--color <auto\|always\|never>` | Colour output. `auto`: on when stderr is a terminal, `NO_COLOR` is unset and `TERM` is not `dumb`. |
+| `-h, --help` | Help for CPM or for the given command. Printed to stdout. |
+| `-V, --version` | Prints `cpm <version>` to stdout. With `-v` it adds the commit, the compiler CPM was built with, and `$CPM_HOME`. |
+
+Short boolean flags can be combined (`-Dv`). Option values may be attached (`--profile=release`, `-j8`) or separate (`--profile release`, `-j 8`).
+
+## 2. Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Operation failed: resolution, network, integrity, compile or link error, failing test, invalid manifest |
+| `2` | Usage error: unknown command or option, missing or invalid argument |
+| `130` | Interrupted (Ctrl-C / SIGINT). Child processes are terminated, and staged store writes are abandoned, never half-committed. |
+| *n* | `cpm run`: the exit code of the script or program, if CPM itself succeeded |
+
+## 3. Commands
+
+### `cpm init`
+
+```
+cpm init [<dir>] [-y] [--name <name>] [--lib | --shared-lib | --header-only] [--std <std>] [--force]
+```
+
+Scaffolds a package in `<dir>` (default `.`, created if missing).
+
+- **Interactive** by default. It asks, in this order, for name, version (`0.1.0`), description, type (`executable`), C++ standard (`c++23`) and license, npm-style: `version: (0.1.0) `. Pressing Enter takes the default in parentheses. An invalid answer is explained and the question is asked again. At the end of input, the remaining defaults are taken. Values given as options (`--name`, `--lib`/`--shared-lib`/`--header-only`, `--std`) are not asked. The type question also accepts short answers: `exe`, `lib`/`static`, `shared`/`dll`, `header`. Prompts go to stderr. When stdin is not a terminal, `-y` is implied.
+- **`-y`** accepts every default. The name is the directory name lowercased, with every run of invalid characters replaced by `-` and leading or trailing punctuation trimmed. If the result is still invalid ([manifest.md §3.1](manifest.md#31-package-names)), `--name` is required.
+- **Never overwrites existing files.** An existing `cpm.jsonc` is an error unless `--force` is given. Other existing files are skipped with a notice.
+- **Files created** (`<id>` is the name turned into a C++ identifier for the templates' namespace: `.` and `-` become `_`, a leading digit gets a `_` prefix, and a C++ keyword or `std` gets a `_` suffix):
+
+| Type | Files |
+|---|---|
+| executable (default) | `cpm.jsonc`, `src/main.cpp`, `src/greeting.hpp`, `src/greeting.cpp`, `tests/greeting.test.cpp`, `.gitignore` |
+| `--lib` / `--shared-lib` | `cpm.jsonc`, `include/<name>/<name>.hpp`, `src/lib.cpp`, `tests/<name>.test.cpp`, `.gitignore` |
+| `--header-only` | `cpm.jsonc`, `include/<name>/<name>.hpp`, `tests/<name>.test.cpp`, `.gitignore` |
+
+The generated `cpm.jsonc` carries comments that explain each field and the conventions. The executable template shows the core/entrypoint split ([manifest.md §4](manifest.md#4-target-inference)): `greeting.cpp` is shared by the executable and the test. The C++ templates only use C++11, so they build with every `std`. `.gitignore` contains `cpm_modules/`, `/build/` and `compile_commands.json`. If a `.gitignore` already exists, missing lines are appended to it.
+
+Afterwards CPM lists the files it created and the ones it kept, and prints the next steps: `cd <dir>` (if needed), then `cpm run` (executables) or `cpm build`, then `cpm test`.
+
+### `cpm install`
+
+```
+cpm install [<spec>…] [-D] [-E] [--frozen-lockfile] [--offline | --prefer-offline]
+            [--registry <name|url>] [--profile <name> | --release] [--no-build]
+aliases: i, add
+```
+
+Without specs, CPM installs everything in the manifest. With specs, it adds or updates those dependencies ([dependencies.md §1.4](dependencies.md#14-cli-specifiers-cpm-install-spec)).
+
+| Option | Description |
+|---|---|
+| `-D, --save-dev` | Write new specs to `devDependencies`. |
+| `-E, --save-exact` | Write the exact version instead of `^<version>` for bare names. |
+| `--frozen-lockfile` | Fail if the lockfile is not fresh. Never writes the manifest or the lockfile. Not allowed together with specs. |
+| `--offline` | Use only the caches and the store. Fail on anything that needs the network. |
+| `--prefer-offline` | Use cached index documents of any age, and fetch only what is missing. |
+| `--registry <name\|url>` | Registry for the registry specs given on this command line; they are written in the object form `{ "version": …, "registry": … }`. |
+| `--profile <name>`, `--release` | Prepare binaries for this profile's ABI. Default `debug`. |
+| `--no-build` | Resolve, fetch and link headers, and use prebuilt binaries the registry offers, but build nothing from source. `cpm build` builds what is missing later. |
+| `--cxx <compiler>` | Compiler whose ABI the dependency binaries are built for ([build.md §1.1](build.md#11-selection-order)). |
+
+A spec is a registry package (`fmt` adds `^<newest release>`, or the exact version with `-E`; `fmt@~10.1` keeps the range as typed), a path (`../mylib`, `file:../mylib`), a git URL (`git+https://host/repo.git#v1.2.0`, `github:owner/repo#v1.2.0`), or a path or git spec prefixed with a name (`mylib@file:../mylib`). A path or git spec without a name takes the name from the package's own `cpm.jsonc`; a package without one must be added by hand with a manifest overlay. Relative paths are resolved against the current directory and written relative to the project root. `--offline` and `--prefer-offline` exclude each other.
+
+After a successful install CPM reports every manifest edit (`Updated cpm.jsonc: dependencies "mylib": "file:../mylib"`) and every package change: `+` added, `-` removed, `~` changed version or source.
+
+**Pipeline** (each step is reported):
+
+1. Load the manifest and the lockfile, and parse the specs.
+2. Resolve ([dependencies.md §4](dependencies.md#4-resolution)), skipped when the lock is fresh and no specs were given.
+3. Fetch missing sources into the store, verifying integrity ([store.md](store.md)).
+4. Ensure binaries for the selected ABI: a prebuilt binary if available, otherwise a source build ([build.md §5](build.md#5-dependency-builds)).
+5. Link `cpm_modules/`, remove stale package directories, and write `.cpm-modules.json`.
+6. **Only after every earlier step succeeds:** apply the manifest edits ([manifest.md §10](manifest.md#10-edits-made-by-cpm)), then write `cpm-lock.json`.
+
+If a step fails, the manifest and the lockfile stay untouched. Store entries that were completed are kept, since they are valid cache content.
+
+### `cpm remove`
+
+```
+cpm remove <name>… [--offline] [--profile <name> | --release] [--cxx <compiler>]
+aliases: rm, uninstall
+```
+
+Removes the named packages from `dependencies` and `devDependencies`, then re-runs the install pipeline with every remaining lock entry pinned ([dependencies.md §4.5](dependencies.md#45-interaction-with-the-lockfile)). Naming a package that is not a direct dependency is an error. Store entries are never deleted ([store.md §8](store.md#8-garbage-collection-post-mvp)).
+
+### `cpm build`
+
+```
+cpm build [--profile <name> | --release] [-j <n>] [--tests] [--cxx <compiler>] [--clean]
+```
+
+Builds the root package ([build.md](build.md)). If the lockfile is stale or `cpm_modules` is out of date, it installs first and says so.
+
+| Option | Description |
+|---|---|
+| `--profile <name>` | Profile to build (default `debug`). |
+| `--release` | Same as `--profile release`. |
+| `-j, --jobs <n>` | Parallel jobs passed to Ninja (default: Ninja's default). |
+| `--tests` | Also build the test executables. |
+| `--cxx <compiler>` | Compiler override ([build.md §1.1](build.md#11-selection-order)). |
+| `--clean` | Delete `cpm_modules/.cache/<profile>/` and `build/<profile>/` before building. |
+
+On success it prints the profile, the elapsed time, and the main output path, for example `build/debug/hello.exe` ([build.md §4.1](build.md#41-build-and-output-directories)).
+
+### `cpm run`
+
+```
+cpm run [<script>] [--profile <name> | --release] [-j <n>] [--cxx <compiler>] [-- <args>…]
+```
+
+- **With `<script>`:** runs `scripts.<script>` from the manifest through the system shell, in the project root, without building first. The arguments after `--` reach the script exactly as given:
+  - **Windows:** `%COMSPEC%` (normally `cmd.exe`) runs `/d /s /c "<script> <args>"`. Each argument is quoted with C runtime rules and then has cmd's metacharacters `( ) ! ^ " < > & |` escaped with `^`. `%` cannot be escaped on a cmd command line, so `%NAME%` inside an argument is still expanded.
+  - **POSIX:** `/bin/sh -c '<script> "$@"' sh <args>`, so the shell never re-parses the arguments.
+
+  A name that is not defined in `scripts` is an error, which lists the defined scripts.
+- **Without `<script>`:** builds the root package and runs it with the arguments after `--`, in the **current directory** (like any program the user runs). A package that is not an executable is an error before anything is built.
+- **Both:** stdin, stdout and stderr are inherited, and the exit code becomes CPM's. While the child runs, CPM ignores Ctrl-C and leaves it to the child. A child that ends because of Ctrl-C makes CPM exit with 130.
+- **Environment** (scripts and the executable): the inherited environment, plus:
+
+| Variable | Value |
+|---|---|
+| `PATH` | prefixed with `build/<profile>` and the directory of the running `cpm` |
+| `CPM_PROJECT_ROOT` | absolute project root |
+| `CPM_PROFILE` | active profile name |
+| `CPM_PACKAGE_NAME`, `CPM_PACKAGE_VERSION` | from the manifest |
+| `CPM_BIN_DIR` | `build/<profile>`, absolute |
+| `CPM_EXE` | absolute path of the running `cpm` |
+
+Paths in these variables use the OS's own separators. `pre<script>`/`post<script>` hooks are reserved and not run in v0.1.
+
+### `cpm test`
+
+```
+cpm test [<filter>…] [--profile <name> | --release] [-j <n>] [--timeout <seconds>] [--no-run]
+```
+
+Builds and runs `tests/*.test.cpp` executables ([build.md §7](build.md#7-tests)). A filter selects tests whose name contains it. Several filters are ORed. `--no-run` only builds. Exits with 1 if any test fails.
+
+### `cpm publish` (*post-MVP*)
+
+```
+cpm publish [--registry <name>] [--out <dir>] [--with-binary] [--dry-run]
+```
+
+See [registry.md §6](registry.md#6-publishing-post-mvp).
+
+### Reserved command names (*post-MVP*)
+
+`update`, `outdated`, `info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
+
+## 4. Output
+
+Normative:
+
+- CPM's status messages, warnings, errors and the build tool's output go to **stderr**.
+- **stdout** is reserved for requested data: `--version`, `--help`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
+- Diagnostics follow [architecture.md §5](architecture.md#5-errors-and-diagnostics).
+
+Non-normative, recommended style (status verb right-aligned to 12 columns, bold green when colour is on):
+
+```
+$ cpm i fmt
+   Resolving 2 packages
+ Downloading fmt@10.2.1 (412 KiB)
+    Building fmt@10.2.1 from source (abi 3f9a1c2b7d4e5a60)
+      Linked 2 packages into cpm_modules
+
+dependencies:
++ fmt 10.2.1
+devDependencies:
++ doctest 2.4.11 (header-only)
+
+Done in 6.2s
+
+$ cpm build
+   Compiling hello v0.1.0 (debug, gcc 13.2.0)
+[4/4] LINK build/debug/hello.exe
+    Finished debug in 1.21s → build/debug/hello.exe
+```
+
+Progress lines that rewrite themselves (`\r`) are used only when stderr is a terminal.
+
+## 5. Configuration
+
+User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
+
+```jsonc
+{
+  "registries": {
+    "default": "https://registry.example.org/cpm/",
+    "internal": { "url": "file:///C:/registries/internal/", "allowHttp": false }
+  },
+  "cxx": "g++",                       // compiler (build.md §1.1)
+  "ninja": "C:/tools/ninja.exe",      // otherwise CPM_NINJA, then PATH
+  "jobs": 0,                          // 0 = Ninja's default
+  "color": "auto",
+  "linkMode": "auto"                  // auto | symlink | junction | copy (store.md §6)
+}
+```
+
+- A registry value is a URL string or an object `{ "url", "allowHttp" }`. A per-registry `token` is planned (*post-MVP*).
+- **No registry is built in** in v0.1. If a registry dependency is used and no `default` registry is configured (and `CPM_REGISTRY` is unset), CPM fails and its hint shows how to configure one.
+- Unknown keys warn. Precedence for each setting: command-line option > environment variable > `config.jsonc` > built-in default.
+
+## 6. Environment variables
+
+| Variable | Effect |
+|---|---|
+| `CPM_HOME` | CPM home directory ([store.md §1](store.md#1-cpm-home)) |
+| `CPM_REGISTRY` | URL that overrides the `default` registry |
+| `CPM_NINJA` | Path to `ninja` |
+| `CXX` | Compiler ([build.md §1.1](build.md#11-selection-order)) |
+| `CPM_KEEP_SANDBOX` | `1` keeps failed dependency-build sandboxes for inspection |
+| `CPM_LOG` | `debug` or `trace`: internal diagnostics on stderr |
+| `NO_COLOR` | Turns colour off (same as `--color never`) unless `--color always` is given |
+
+Variables CPM **sets** for child processes: `CPM_PROJECT_ROOT`, `CPM_PROFILE`, `CPM_PACKAGE_NAME`, `CPM_PACKAGE_VERSION`, `CPM_BIN_DIR`, `CPM_EXE` (scripts), plus `CPM_TEST=1` (tests).

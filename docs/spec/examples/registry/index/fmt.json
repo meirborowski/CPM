@@ -1,0 +1,27 @@
+{
+  "name": "fmt",
+  "versions": {
+    "10.2.1": {
+      "source": {
+        "url": "packages/fmt/fmt-10.2.1.tar.gz",
+        "integrity": "sha256:493805ecc9d155b64e2365962ae8e3927f8afea4a7c84e9e048db2c92b80253a",
+        "stripComponents": 1
+      },
+      "type": "static-lib",
+      "std": "c++11",
+      "dependencies": {},
+      "manifest": {
+        "type": "static-lib",
+        "std": "c++11",
+        "sources": ["src/format.cc", "src/os.cc"],
+        "include": "include"
+      },
+      "binaries": {
+        "3f9a1c2b7d4e5a60": {
+          "url": "binaries/fmt/10.2.1/3f9a1c2b7d4e5a60.tar.gz",
+          "integrity": "sha256:09361a5e3989a3ca1c3e76a6668aba436b053e4334ed3fe8efd1e5493a267283"
+        }
+      }
+    }
+  }
+}

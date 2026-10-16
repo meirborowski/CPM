@@ -1,0 +1,62 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:cpm:schema:registry-index:1",
+  "title": "CPM registry index document (index/<name>.json), apiVersion 1",
+  "description": "See docs/spec/registry.md.",
+  "type": "object",
+  "required": ["name", "versions"],
+  "additionalProperties": false,
+  "properties": {
+    "name": { "$ref": "urn:cpm:schema:manifest:1#/definitions/packageName" },
+    "versions": {
+      "type": "object",
+      "propertyNames": {
+        "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z.-]+)?$"
+      },
+      "additionalProperties": { "$ref": "#/definitions/versionEntry" }
+    }
+  },
+  "definitions": {
+    "integrity": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "archive": {
+      "type": "object",
+      "required": ["url", "integrity"],
+      "additionalProperties": false,
+      "properties": {
+        "url": { "type": "string", "minLength": 1, "description": "Absolute, or relative to the registry base URL." },
+        "integrity": { "$ref": "#/definitions/integrity" },
+        "stripComponents": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "versionEntry": {
+      "type": "object",
+      "required": ["source", "type", "std", "dependencies"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "$ref": "#/definitions/archive" },
+        "type": { "enum": ["static-lib", "shared-lib", "header-only"] },
+        "std": { "$ref": "urn:cpm:schema:manifest:1#/definitions/std" },
+        "dependencies": {
+          "type": "object",
+          "propertyNames": { "$ref": "urn:cpm:schema:manifest:1#/definitions/packageName" },
+          "additionalProperties": { "type": "string", "minLength": 1, "description": "SemVer range." }
+        },
+        "manifest": { "$ref": "urn:cpm:schema:manifest:1#/definitions/manifestOverlay" },
+        "binaries": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[0-9a-f]{16}$" },
+          "additionalProperties": {
+            "type": "object",
+            "required": ["url", "integrity"],
+            "additionalProperties": false,
+            "properties": {
+              "url": { "type": "string", "minLength": 1 },
+              "integrity": { "$ref": "#/definitions/integrity" }
+            }
+          }
+        },
+        "yanked": { "type": "boolean" }
+      }
+    }
+  }
+}

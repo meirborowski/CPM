@@ -1,0 +1,195 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "urn:cpm:schema:manifest:1",
+  "title": "CPM package manifest (cpm.jsonc)",
+  "description": "See docs/spec/manifest.md. CPM itself only warns on unknown keys; this schema rejects them so editors flag typos.",
+  "type": "object",
+  "required": ["name", "version"],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": { "type": "string" },
+    "name": { "$ref": "#/definitions/packageName" },
+    "version": { "$ref": "#/definitions/semver" },
+    "description": { "type": "string" },
+    "license": { "type": "string", "description": "SPDX license expression." },
+    "authors": { "type": "array", "items": { "type": "string" } },
+    "repository": { "type": "string" },
+    "homepage": { "type": "string" },
+    "keywords": { "type": "array", "items": { "type": "string" } },
+    "private": { "type": "boolean", "description": "true makes `cpm publish` refuse the package." },
+    "std": { "$ref": "#/definitions/std" },
+    "type": { "$ref": "#/definitions/targetType" },
+    "main": { "type": "string", "minLength": 1, "description": "Entrypoint source relative to the package root." },
+    "sources": { "$ref": "#/definitions/globList" },
+    "include": { "type": "string", "minLength": 1, "description": "Public header directory. Default: include." },
+    "defines": { "$ref": "#/definitions/defineList" },
+    "publicDefines": { "$ref": "#/definitions/defineList" },
+    "systemLibs": { "$ref": "#/definitions/systemLibList" },
+    "files": { "$ref": "#/definitions/globList" },
+    "scripts": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[A-Za-z0-9][A-Za-z0-9:._-]*$" },
+      "additionalProperties": { "type": "string" }
+    },
+    "dependencies": { "$ref": "#/definitions/dependencyMap" },
+    "devDependencies": { "$ref": "#/definitions/dependencyMap" },
+    "profiles": {
+      "type": "object",
+      "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+      "additionalProperties": { "$ref": "#/definitions/profile" }
+    },
+    "platforms": { "$ref": "#/definitions/platforms" }
+  },
+  "definitions": {
+    "packageName": {
+      "type": "string",
+      "pattern": "^(?!(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$)[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$",
+      "description": "1-64 chars: lowercase letters, digits, '.', '_', '-'; starts and ends alphanumeric."
+    },
+    "semver": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
+    },
+    "std": { "enum": ["c++11", "c++14", "c++17", "c++20", "c++23", "c++26"] },
+    "targetType": { "enum": ["executable", "static-lib", "shared-lib", "header-only"] },
+    "globList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "defineList": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*(=.*)?$" }
+    },
+    "systemLibList": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[A-Za-z0-9_.+][A-Za-z0-9_.+-]*$" }
+    },
+    "flagList": { "type": "array", "items": { "type": "string" } },
+    "dependencyMap": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/definitions/packageName" },
+      "additionalProperties": { "$ref": "#/definitions/dependencySpec" }
+    },
+    "dependencySpec": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1,
+          "description": "A SemVer range (registry), file:<path>, git+<url>[#ref], or github:<owner>/<repo>[#ref]."
+        },
+        { "$ref": "#/definitions/registryDependency" },
+        { "$ref": "#/definitions/gitDependency" },
+        { "$ref": "#/definitions/pathDependency" }
+      ]
+    },
+    "registryDependency": {
+      "type": "object",
+      "required": ["version"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "minLength": 1, "description": "SemVer range." },
+        "registry": { "type": "string", "minLength": 1, "description": "Registry name from config.jsonc, or a registry base URL." }
+      }
+    },
+    "gitDependency": {
+      "type": "object",
+      "required": ["git"],
+      "additionalProperties": false,
+      "properties": {
+        "git": { "type": "string", "minLength": 1 },
+        "rev": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "tag": { "type": "string", "minLength": 1 },
+        "branch": { "type": "string", "minLength": 1 },
+        "version": { "$ref": "#/definitions/semver" },
+        "manifest": { "$ref": "#/definitions/manifestOverlay" }
+      },
+      "not": {
+        "anyOf": [
+          { "required": ["rev", "tag"] },
+          { "required": ["rev", "branch"] },
+          { "required": ["tag", "branch"] }
+        ]
+      }
+    },
+    "pathDependency": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "manifest": { "$ref": "#/definitions/manifestOverlay" }
+      }
+    },
+    "manifestOverlay": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "version": { "$ref": "#/definitions/semver" },
+        "type": { "enum": ["static-lib", "shared-lib", "header-only"] },
+        "std": { "$ref": "#/definitions/std" },
+        "main": { "type": "string", "minLength": 1 },
+        "sources": { "$ref": "#/definitions/globList" },
+        "include": { "type": "string", "minLength": 1 },
+        "defines": { "$ref": "#/definitions/defineList" },
+        "publicDefines": { "$ref": "#/definitions/defineList" },
+        "systemLibs": { "$ref": "#/definitions/systemLibList" },
+        "platforms": { "$ref": "#/definitions/platforms" },
+        "dependencies": { "$ref": "#/definitions/dependencyMap" },
+        "build": { "$ref": "#/definitions/bridgeBuild" }
+      }
+    },
+    "bridgeBuild": {
+      "description": "Legacy Bridge (post-MVP): build with the package's own build system.",
+      "type": "object",
+      "required": ["system"],
+      "additionalProperties": false,
+      "properties": {
+        "system": { "enum": ["cmake", "meson"] },
+        "options": { "type": "object", "additionalProperties": { "type": "string" } },
+        "link": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "inherits": { "type": "string", "pattern": "^[a-z][a-z0-9-]{0,31}$" },
+        "opt": {
+          "oneOf": [
+            { "type": "integer", "enum": [0, 1, 2, 3] },
+            { "type": "string", "enum": ["0", "1", "2", "3", "s", "z"] }
+          ]
+        },
+        "debug": { "type": "boolean" },
+        "assertions": { "type": "boolean" },
+        "lto": { "type": "boolean" },
+        "sanitizers": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "enum": ["address", "undefined", "thread", "memory", "leak"] }
+        },
+        "runtime": { "enum": ["dynamic", "static"] },
+        "debugRuntime": { "type": "boolean" },
+        "warnings": { "enum": ["none", "default", "strict"] },
+        "werror": { "type": "boolean" },
+        "defines": { "$ref": "#/definitions/defineList" },
+        "cxxflags": { "$ref": "#/definitions/flagList" },
+        "ldflags": { "$ref": "#/definitions/flagList" }
+      }
+    },
+    "platformOverrides": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "defines": { "$ref": "#/definitions/defineList" },
+        "publicDefines": { "$ref": "#/definitions/defineList" },
+        "systemLibs": { "$ref": "#/definitions/systemLibList" },
+        "sources": { "$ref": "#/definitions/globList" },
+        "cxxflags": { "$ref": "#/definitions/flagList" },
+        "ldflags": { "$ref": "#/definitions/flagList" }
+      }
+    },
+    "platforms": {
+      "type": "object",
+      "propertyNames": { "enum": ["windows", "linux", "macos", "unix"] },
+      "additionalProperties": { "$ref": "#/definitions/platformOverrides" }
+    }
+  }
+}

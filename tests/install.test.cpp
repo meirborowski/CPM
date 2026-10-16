@@ -22,6 +22,7 @@
 #include <windows.h>
 #endif
 
+// cpm::proc is spelled out: macOS declares a global `struct proc` (<sys/proc.h>), so plain `proc::` is ambiguous.
 using namespace cpm;
 namespace fs = std::filesystem;
 
@@ -44,7 +45,7 @@ void git(const fs::path& dir, std::vector<std::string> args) {
     std::vector<std::string> argv = {"git", "-c", "user.name=cpm-test", "-c", "user.email=cpm@test", "-c",
                                      "init.defaultBranch=main", "-c", "core.autocrlf=false"};
     argv.insert(argv.end(), args.begin(), args.end());
-    auto r = proc::capture({.argv = argv, .cwd = dir});
+    auto r = cpm::proc::capture({.argv = argv, .cwd = dir});
     if (r.exit_code != 0) throw std::runtime_error("git failed: " + r.err);
 }
 
@@ -56,7 +57,7 @@ std::string file_url(const fs::path& dir) {
 }  // namespace
 
 TEST(path_and_git_dependencies_end_to_end) {
-    if (!proc::find_program("git")) {
+    if (!cpm::proc::find_program("git")) {
         std::puts("git not found; skipping");
         return;
     }
@@ -114,7 +115,7 @@ TEST(path_and_git_dependencies_end_to_end) {
     req.dependencies = [&](const build::Project& p) { return install::ensure(p, config); };
     build::BuildResult built = build::run_build(req, config);
     CHECK_EQ(built.exit_code, 0);
-    auto out = proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
+    auto out = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
     CHECK_EQ(out.out.substr(0, out.out.find_first_of("\r\n")), "hi app [hi mylib]");
 
     // A frozen, offline reinstall changes nothing.

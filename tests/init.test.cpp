@@ -10,6 +10,7 @@
 #include "manifest/manifest.hpp"
 #include "support/check.hpp"
 
+// cpm::proc is spelled out: macOS declares a global `struct proc` (<sys/proc.h>), so plain `proc::` is ambiguous.
 using namespace cpm;
 namespace fs = std::filesystem;
 using manifest::TargetKind;
@@ -189,7 +190,7 @@ TEST(scaffolded_packages_build_and_pass_their_tests) {
             main_req.cwd = root;
             build::BuildResult built = build::run_build(main_req, {});
             CHECK_EQ(built.exit_code, 0);
-            proc::Captured out = proc::capture({.argv = {(root / built.plan.main_output).string()}});
+            cpm::proc::Captured out = cpm::proc::capture({.argv = {(root / built.plan.main_output).string()}});
             CHECK_EQ(out.exit_code, 0);
             CHECK(out.out.starts_with("Hello, world!"));
         }

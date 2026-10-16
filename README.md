@@ -4,7 +4,7 @@
 
 CPM brings the npm/pnpm workflow to C++: one declarative manifest (`cpm.jsonc`), a deterministic lockfile, a project-local `cpm_modules/`, a global ABI-keyed binary cache, and direct Ninja generation. No CMake.
 
-> **Status: early and experimental (v0.1).** `cpm init`, `install`, `remove`, `build`, `run` and `test` work with GCC and Clang, for registry, git and path dependencies. So far CPM has only been tested on Windows with MinGW-w64 GCC 13. The Linux and macOS code paths exist but have not been run yet. MSVC is not supported yet, and there is no public package registry yet (see [Registries](#registries)).
+> **Status: early and experimental (v0.1).** `cpm init`, `install`, `remove`, `build`, `run` and `test` work with GCC and Clang, for registry, git and path dependencies. CI builds and tests CPM on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang). MSVC is not supported yet, and there is no public package registry yet (see [Registries](#registries)).
 
 ## Why CPM
 

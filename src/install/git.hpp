@@ -13,12 +13,13 @@ namespace fs = std::filesystem;
 // $CPM_HOME/cache/git/<sha256(url)[:16]>.git
 fs::path mirror_dir(const fs::path& home, std::string_view url);
 
-// Clones the mirror if it does not exist yet (under a lock). Returns its directory and whether it was just
-// cloned (a fresh clone needs no fetch). Fails when offline and the mirror is missing.
+// Clones the mirror if it does not exist yet, or has lost its HEAD (under a lock). Returns its directory and
+// whether it was just cloned (a fresh clone needs no fetch). Fails when offline and the mirror is missing.
 std::pair<fs::path, bool> ensure_mirror(const fs::path& home, std::string_view url, bool offline);
 
-// Updates the mirror from its remote.
-void fetch(const fs::path& mirror, std::string_view url);
+// Updates the mirror of `url` from its remote. When the fetch fails because the mirror is damaged rather
+// than unreachable, clones it again (store.md §3).
+void fetch(const fs::path& home, std::string_view url);
 
 // The commit a ref (tag, branch, commit, or empty for the default branch) points to, if known locally.
 std::optional<std::string> resolve(const fs::path& mirror, std::string_view ref);

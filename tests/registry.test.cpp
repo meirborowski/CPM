@@ -8,6 +8,7 @@
 #include "install/registry.hpp"
 #include "install/resolver.hpp"
 #include "install/sources.hpp"
+#include "install/store.hpp"
 #include "lock/lockfile.hpp"
 #include "support/check.hpp"
 #include "support/registry_fixture.hpp"
@@ -201,6 +202,15 @@ TEST(installs_from_a_registry_with_prebuilt_binaries) {
 
     // Offline reinstall from the caches works.
     install::install(project, {.cwd = app, .offline = true}, config);
+
+    // A store entry whose files were deleted from outside CPM is extracted again from the download cache.
+    fs::path entry = w / "home1" / "store" / "greet@1.0.0";
+    fsx::remove_tree(entry / "include");
+    fsx::remove_tree(entry / "src");
+    CHECK(!install::entry_intact(entry));
+    CHECK_EQ(build::run_build(req, config).exit_code, 0);
+    CHECK(install::entry_intact(entry));
+    CHECK(install::library_intact(lib_dir));
 
     // Publish that build as a prebuilt binary; a second machine downloads it instead of compiling.
     reg.add_binary("greet", "1.0.0", lib_dir);

@@ -19,7 +19,7 @@ struct DependencyInputs {
 };
 
 // Builds a static library from a store entry for the project's ABI into <entry>/lib/<abi16>/, unless it
-// is already there (docs/spec/build.md §5). Runs in a sandbox under $CPM_HOME/tmp; the output goes to
+// is already there and intact (docs/spec/build.md §5, store.md §2.3). Runs in a sandbox under $CPM_HOME/tmp; the output goes to
 // $CPM_HOME/logs and is shown when the build fails. Returns the lib/<abi16> directory.
 fs::path ensure_library(const build::Project& project, const lock::Package& package, const fs::path& entry,
                         const manifest::Manifest& manifest, const DependencyInputs& inputs, const fs::path& ninja);

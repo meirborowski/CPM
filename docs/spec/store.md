@@ -21,7 +21,7 @@ $CPM_HOME/
   tools/                           # downloaded tools such as ninja (post-MVP)
 ```
 
-The store and the caches can be shared by every project and every CPM process on the machine. Deleting `cache/` is always safe. Deleting `store/` is safe too: projects relink and rebuild on the next `cpm install`/`cpm build`.
+The store and the caches can be shared by every project and every CPM process on the machine. Deleting `cache/` is always safe. Deleting `store/` is safe too: projects relink and rebuild on the next `cpm install`/`cpm build`. Losing only some of their files, for example to a cleaner of old temporary files, is handled as well: CPM notices damaged store entries (§2.3) and git mirrors (§3) and makes them again.
 
 ## 2. Store entries
 
@@ -38,7 +38,7 @@ The store and the caches can be shared by every project and every CPM process on
 store/fmt@10.2.1/
   .integrity                 # "sha256:<hex>" (registry) or "git:<commit>" (git)
   .source.json               # the lock "resolution" object this entry came from
-  .complete                  # written last: marks the source extraction as complete
+  .complete                  # written last: marks the source extraction as complete; lists files checked on reuse (§2.3)
   cpm.jsonc                  # the package manifest, if the archive has one
   .cpm-overlay.json          # the effective overlay, if any (canonical JSON)
   include/ …                 # as extracted (the include dir may be elsewhere if an overlay says so)
@@ -50,7 +50,7 @@ store/fmt@10.2.1/
       .complete
 ```
 
-- Everything outside `lib/` is the extracted package and is **immutable**. CPM never writes there after the entry is complete.
+- Everything outside `lib/` is the extracted package and is **immutable**. CPM never writes there after the entry is complete. It only replaces a damaged entry as a whole (§2.3).
 - An entry without `.complete`, or an ABI directory without its own `.complete`, is garbage. It is deleted the next time CPM touches that entry, while holding its lock.
 - On reuse, `.integrity` MUST equal the integrity CPM expects, otherwise the entry is treated as a store conflict (see the naming table).
 
@@ -83,17 +83,31 @@ store/fmt@10.2.1/
 | `publicDefines`, `systemLibs` | Effective values after platform overrides. Dependents use them without re-reading the manifest. |
 | `origin` | `source` (built locally) or `prebuilt` (downloaded from a registry). |
 
+### 2.3 Damaged entries
+
+Files under `$CPM_HOME` can disappear without CPM's involvement, for example when a cleaner deletes old files from a home kept in a temporary directory. Such a cleaner tends to take the package's files, which keep the old timestamps of their archive or commit, and leave CPM's own recently written files, `.complete` included. So `.complete` alone does not prove that an entry is usable. Every time CPM uses an entry (each install and build), it first runs a cheap check. The check reads one small file and tests that a few files exist. It never hashes or walks the whole package.
+
+- **Source entry:** `.complete` lists a sample of the package's files, one path per line, relative to the entry and separated by `/`. Lines starting with `#` are comments. The sample is the first file of each top-level directory (looking at files before subdirectories, names in byte order), then the top-level files, at most 32 paths in all. Every listed file MUST exist. An empty `.complete`, written by CPM before this check existed, instead requires at least one file outside CPM's own files (`.complete`, `.integrity`, `.source.json`, `.cpm-overlay.json`) and `lib/`.
+- **ABI directory:** `meta.json` MUST parse, and every `artifacts[].file` it lists MUST exist in the directory.
+
+When the check fails, CPM prints a warning and, holding the item's lock (§4), deletes the entry or ABI directory. It then extracts or builds the item again, as if it had been missing. Deleting a source entry deletes its ABI directories too, so they are rebuilt (or their prebuilt binaries installed again) when needed. A prebuilt binary whose archive lacks an artifact its `meta.json` lists is not installed, because it would fail the check on every use. CPM builds the package from source instead.
+
+The check catches the loss of a package's files as a whole or of whole directories. It does not catch every single missing file. A full integrity check belongs in `cpm store status` (§8).
+
 ## 3. Other home directories
 
 - `cache/downloads/`: archives named by content hash. An archive found there with the right hash is not downloaded again. `--offline` fetches only from here.
 - `cache/git/`: bare mirrors (`git clone --mirror`, then `git fetch` to update). A store entry is created from `git archive --format=tar <commit>` piped into the same extraction and validation path as source archives.
+  - CPM runs git on a mirror with `--git-dir=<mirror>`, never `-C <mirror>`. If the mirror is damaged, git then fails, rather than finding a repository in a parent directory of `$CPM_HOME` and using that one.
+  - A damaged mirror is cloned again, with a warning and under the mirror's lock. The new clone is staged in `tmp/` and replaces the old directory only once the clone succeeded. A mirror counts as damaged when its directory exists without `HEAD`, or when a fetch fails and a check shows the mirror is unusable: its `remote.origin.url` is not the package URL, or `git for-each-ref` cannot read the objects its refs point to. That check walks no history, so it stays fast for large repositories.
+  - A fetch that fails while the mirror passes the check is a network or remote problem. CPM reports the error and keeps the mirror.
 - `cache/registry/`: cached index documents ([registry.md §5](registry.md#5-client-behaviour)).
 - `logs/`: `build-<name>@<version>-<abi16>.log`, the full output of each dependency build. CPM prints the log path and its last 40 lines when a build fails.
 
 ## 4. Atomicity and locking
 
 - **Staging:** every store mutation is staged in `tmp/<random>/` and moved into place with a single `rename`. `tmp/` is on the same volume as `store/`, so the rename is atomic. The `.complete` marker is written into the staged directory before the rename.
-- **Locks:** CPM holds an exclusive OS file lock (`LockFileEx` / `flock`) on `locks/<sha256(key)[:16]>.lock` while it fetches, extracts or builds a store item. `key` is the entry directory name for source extraction and `<entry>/lib/<abi16>` for builds. After taking the lock, CPM checks again whether the item became complete in the meantime. If CPM has to wait more than 1 second it prints `waiting for another cpm process (fmt@10.2.1)…`.
+- **Locks:** CPM holds an exclusive OS file lock (`LockFileEx` / `flock`) on `locks/<sha256(key)[:16]>.lock` while it fetches, extracts or builds a store item. `key` is the entry directory name for source extraction and `<entry>/lib/<abi16>` for builds. After taking the lock, CPM checks again whether the item became complete (and passes the check of §2.3) in the meantime. If CPM has to wait more than 1 second it prints `waiting for another cpm process (fmt@10.2.1)…`.
 - Locks are advisory and released automatically if a process dies. Stale `tmp/` directories older than 24 hours are removed opportunistically.
 
 ## 5. `cpm_modules/`

@@ -21,13 +21,21 @@ std::string entry_name(const lock::Package& package);
 // different integrity (another registry) gets "+s<first 8 hex of its integrity>" (store.md §2.1).
 fs::path entry_dir(const fs::path& home, const lock::Package& package);
 
-// Extracts a git package's commit into the store unless it is already there (under a lock, staged in
-// $CPM_HOME/tmp and renamed into place). `overlay` is recorded with the entry. Returns the entry directory.
+// Whether a store entry is complete and still has its files: every file sampled into its .complete when it
+// was extracted exists (store.md §2.3). Cheap enough to run on every build: no hashing, no full walk.
+bool entry_intact(const fs::path& entry);
+
+// Whether <entry>/lib/<abi16> is complete and still holds every artifact its meta.json lists (store.md §2.3).
+bool library_intact(const fs::path& lib_dir);
+
+// Extracts a git package's commit into the store unless it is already there and intact (under a lock, staged
+// in $CPM_HOME/tmp and renamed into place); a damaged entry is extracted again, with a warning. `overlay` is
+// recorded with the entry. Returns the entry directory.
 fs::path ensure_git_entry(const fs::path& home, const lock::Package& package, const std::optional<json::Value>& overlay,
                           bool offline);
 
 // Downloads (or takes from the download cache) a registry package's archive, verifies its integrity
-// and extracts it into the store unless it is already there. `strip` and `overlay` come from the index.
+// and extracts it into the store unless it is already there and intact. `strip` and `overlay` come from the index.
 fs::path ensure_registry_entry(const fs::path& home, const lock::Package& package, int strip,
                                const std::optional<json::Value>& overlay, bool allow_http, bool offline);
 

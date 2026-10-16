@@ -57,18 +57,27 @@ std::string tail(std::string_view text, std::size_t n) {
 
 std::string abs_utf8(const fs::path& p) { return paths::to_utf8(fs::absolute(p).lexically_normal()); }
 
+// Under the library's lock: a complete ABI directory that failed library_intact lost files to something
+// outside CPM, so it is removed and made again (store.md §2.3).
+void discard_damaged(const fs::path& out_dir, std::string_view what) {
+    std::error_code ec;
+    if (!fs::exists(out_dir / ".complete", ec)) return;
+    log::warn(std::format("the store library {} is missing files; making it again", what));
+    fsx::remove_tree(out_dir);
+}
+
 }  // namespace
 
 fs::path ensure_library(const build::Project& project, const lock::Package& package, const fs::path& entry,
                         const manifest::Manifest& m, const DependencyInputs& inputs, const fs::path& ninja) {
     const std::string abi = project.abi.dir();
     fs::path out_dir = entry / "lib" / abi;
-    std::error_code ec;
-    if (fs::exists(out_dir / ".complete", ec)) return out_dir;
+    if (library_intact(out_dir)) return out_dir;
 
     std::string what = std::format("{} for abi {}", entry_name(package), abi);
     FileLock lock = FileLock::acquire(project.home / "locks" / (Sha256::hex(what).substr(0, 16) + ".lock"), what);
-    if (fs::exists(out_dir / ".complete", ec)) return out_dir;
+    if (library_intact(out_dir)) return out_dir;
+    discard_damaged(out_dir, what);
 
     const toolchain::Toolchain& tc = project.toolchain;
     const toolchain::Driver& driver = *project.driver;
@@ -176,6 +185,7 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
     meta.set("origin", "source");
     fsx::write_file_atomic(staging / "meta.json", json::write(meta) + "\n");
     fsx::write_file_atomic(staging / ".complete", "");
+    std::error_code ec;
     if (fs::exists(out_dir, ec)) fsx::remove_tree(out_dir);  // incomplete leftovers
     fsx::rename_replace(staging, out_dir);
     fsx::remove_tree(sandbox);
@@ -193,12 +203,13 @@ bool install_prebuilt(const build::Project& project, const lock::Package& packag
                       const std::string& url, const std::string& integrity, bool allow_http, bool offline) {
     const std::string abi = project.abi.dir();
     fs::path out_dir = entry / "lib" / abi;
-    std::error_code ec;
-    if (fs::exists(out_dir / ".complete", ec)) return true;
+    if (library_intact(out_dir)) return true;
 
     std::string what = std::format("{} for abi {}", entry_name(package), abi);
     FileLock lock = FileLock::acquire(project.home / "locks" / (Sha256::hex(what).substr(0, 16) + ".lock"), what);
-    if (fs::exists(out_dir / ".complete", ec)) return true;
+    if (library_intact(out_dir)) return true;
+    discard_damaged(out_dir, what);
+    std::error_code ec;
 
     fs::path archive = cached_archive(project.home, url, integrity, allow_http, offline,
                                       std::format("{} (prebuilt, abi {})", package.key(), abi));
@@ -230,6 +241,13 @@ bool install_prebuilt(const build::Project& project, const lock::Package& packag
         return false;
     }
     fsx::write_file_atomic(staging / ".complete", "");
+    if (!library_intact(staging)) {
+        // Installed anyway, it would fail the check on every later use and be installed again each time.
+        fsx::remove_tree(staging);
+        log::warn(std::format("the prebuilt binary of {} lacks files its meta.json lists; building from source",
+                              package.key()));
+        return false;
+    }
     if (fs::exists(out_dir, ec)) fsx::remove_tree(out_dir);
     fsx::rename_replace(staging, out_dir);
     log::status("Using", std::format("prebuilt {} (abi {})", package.key(), abi));

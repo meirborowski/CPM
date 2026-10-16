@@ -146,7 +146,7 @@ PackageMeta Sources::describe_git(const manifest::DependencySpec& spec, const st
         bool is_commit = spec.git_ref.size() >= 7 && commit && commit->starts_with(spec.git_ref);
         bool is_tag = git::resolve(mirror, "refs/tags/" + spec.git_ref).has_value() && !spec.git_ref.empty();
         if ((!commit || (!is_commit && !is_tag)) && !offline_ && !fetched_.contains(spec.git_url)) {
-            git::fetch(mirror, spec.git_url);
+            git::fetch(home_, spec.git_url);
             fetched_.insert(spec.git_url);
             commit = git::resolve(mirror, spec.git_ref);
         }

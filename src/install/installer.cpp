@@ -146,8 +146,7 @@ Materialized materialize(const build::Project& project, const lock::Lockfile& lo
             i.dir = i.manifest.root;
         } else {
             i.dir = entry_dir(project.home, *p);
-            std::error_code ec;
-            if (!fs::exists(i.dir / ".complete", ec)) {
+            if (!entry_intact(i.dir)) {
                 const RegistryVersion& rv = index_entry(registries, *p);
                 Registry& registry = registries.by_base(std::get<lock::RegistryResolution>(p->resolution).registry);
                 i.dir = ensure_registry_entry(project.home, *p, rv.source.strip_components, rv.overlay,
@@ -183,8 +182,7 @@ Materialized materialize(const build::Project& project, const lock::Lockfile& lo
                              i.layout.kind == TargetKind::StaticLib;
         if (store_library) {
             fs::path lib_dir = i.dir / "lib" / project.abi.dir();
-            std::error_code ec;
-            if (fs::exists(lib_dir / ".complete", ec)) {
+            if (library_intact(lib_dir)) {
                 i.lib = lib_dir;
             } else if (const auto* reg = std::get_if<lock::RegistryResolution>(&p.resolution)) {
                 // A prebuilt binary for this ABI saves the build (registry.md §4.2).
@@ -306,7 +304,7 @@ std::string name_from_git(const build::Project& project, const std::string& spec
     auto [mirror, cloned] = git::ensure_mirror(project.home, spec.git_url, offline);
     auto commit = git::resolve(mirror, spec.git_ref);
     if (!commit && !offline && !cloned) {
-        git::fetch(mirror, spec.git_url);
+        git::fetch(project.home, spec.git_url);
         commit = git::resolve(mirror, spec.git_ref);
     }
     if (!commit) throw Error(std::format("{} has no ref \"{}\"", spec.git_url, spec.git_ref));

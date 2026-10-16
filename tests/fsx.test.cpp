@@ -52,6 +52,29 @@ TEST(remove_tree_does_not_follow_links) {
     CHECK(fs::exists(target / "inner" / "precious.txt"));
 }
 
+// check::TempDir cleans up what tests leave behind: read-only files (git makes its objects read-only, which
+// stops std::filesystem::remove_all on Windows) and links, which it removes without following.
+TEST(temp_dir_removes_read_only_files_but_not_link_targets) {
+    check::TempDir outer;
+    fs::path target = outer.path() / "target";
+    fs::create_directories(target);
+    std::ofstream(target / "precious.txt") << "keep me";
+
+    fs::path inner_path;
+    {
+        check::TempDir inner;
+        inner_path = inner.path();
+        fs::path object = inner.path() / "repo.git" / "objects" / "ab" / "cdef01";
+        fs::create_directories(object.parent_path());
+        std::ofstream(object) << "x";
+        fs::permissions(object, fs::perms::owner_write | fs::perms::group_write | fs::perms::others_write,
+                        fs::perm_options::remove);
+        fsx::link_directory(target, inner.path() / "cpm_modules" / "pkg" / "include");
+    }
+    CHECK(!fs::exists(inner_path));
+    CHECK(fs::exists(target / "precious.txt"));
+}
+
 TEST(remove_tree_refuses_roots) {
     CHECK_THROWS(fsx::remove_tree(fs::current_path().root_path()), "refusing to delete");
     fsx::remove_tree(fs::current_path() / "definitely-missing-cpm-test-dir");  // missing is fine

@@ -12,10 +12,17 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <chrono>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <format>
 #include <random>
 #include <string>
+#include <thread>
+
+#include "core/fsx.hpp"
+#include "core/paths.hpp"
 
 namespace check {
 
@@ -30,9 +37,22 @@ public:
         path_ = std::filesystem::temp_directory_path() / std::format("cpm-test-{:08x}{:08x}", rd(), rd());
         std::filesystem::create_directories(path_);
     }
+    // Deletes with cpm::fsx::remove_tree rather than std::filesystem::remove_all, which on Windows stops at the
+    // read-only files git makes for its objects, and with libstdc++ may follow the junctions in cpm_modules.
+    // A virus scanner can hold a new file open for a moment, so it tries for about a second.
     ~TempDir() {
-        std::error_code ec;
-        std::filesystem::remove_all(path_, ec);
+        for (int attempt = 0;; ++attempt) {
+            try {
+                cpm::fsx::remove_tree(path_);
+                return;
+            } catch (const std::exception& e) {
+                if (attempt == 10) {
+                    std::fprintf(stderr, "warning: cannot remove %s: %s\n", cpm::paths::to_utf8(path_).c_str(), e.what());
+                    return;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(20 * (attempt + 1)));
+        }
     }
     TempDir(const TempDir&) = delete;
     TempDir& operator=(const TempDir&) = delete;

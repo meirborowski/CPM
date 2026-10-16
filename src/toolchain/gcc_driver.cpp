@@ -84,10 +84,10 @@ public:
         return {"-L" + std::string(dir), "-l" + std::string(name)};
     }
     std::string system_lib_flag(std::string_view name) const override { return "-l" + std::string(name); }
-    std::vector<std::string> shared_link_flags(std::string_view import_lib) const override {
+    std::vector<std::string> shared_link_flags(std::string_view file_name, std::string_view import_lib) const override {
         if (tc_.os == Os::Windows) return {"-Wl,--out-implib," + std::string(import_lib)};
-        if (tc_.os == Os::MacOS) return {"-dynamiclib"};
-        return {};
+        if (tc_.os == Os::MacOS) return {"-dynamiclib", "-Wl,-install_name,@rpath/" + std::string(file_name)};
+        return {"-Wl,-soname," + std::string(file_name)};
     }
 
     std::string object_ext() const override { return ".o"; }

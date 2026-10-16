@@ -194,6 +194,23 @@ TEST(static_and_shared_library_plans) {
                                   build::infer_layout(shared, {}));
     CHECK_EQ(splan.main_output, "build/debug/libhello.so");
     CHECK(std::find(splan.cxxflags.begin(), splan.cxxflags.end(), "-fPIC") != splan.cxxflags.end());
+    // The soname makes dependents record "libhello.so" (found through their rpath), not the build path.
+    CHECK_EQ(splan.main->extra_ldflags, (std::vector<std::string>{"-Wl,-soname,libhello.so"}));
+    // Tests link the .so, so it must be an input of their link edge (`cpm test` builds only the tests).
+    CHECK_EQ(splan.tests[0].extra_libs, (std::vector<std::string>{"build/debug/libhello.so"}));
+    const auto& test_implicit = splan.tests[0].implicit;
+    CHECK(std::find(test_implicit.begin(), test_implicit.end(), "build/debug/libhello.so") != test_implicit.end());
+    CHECK_EQ(splan.tests[0].extra_ldflags, (std::vector<std::string>{"-Wl,-rpath,$ORIGIN/.."}));
+
+    auto mac = tc;
+    mac.os = Os::MacOS;
+    auto mdriver = toolchain::make_driver(mac);
+    auto mplan = build::make_plan(shared, shared.profiles.at("debug"), mac, "-std=c++20", *mdriver,
+                                  build::infer_layout(shared, {}));
+    CHECK_EQ(mplan.main_output, "build/debug/libhello.dylib");
+    CHECK_EQ(mplan.main->extra_ldflags,
+             (std::vector<std::string>{"-dynamiclib", "-Wl,-install_name,@rpath/libhello.dylib"}));
+    CHECK_EQ(mplan.tests[0].extra_ldflags, (std::vector<std::string>{"-Wl,-rpath,@loader_path/.."}));
 
     tc.os = Os::Windows;  // MinGW: DLL plus import library
     auto wdriver = toolchain::make_driver(tc);

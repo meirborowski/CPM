@@ -197,14 +197,15 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
             LinkStep link;
             link.name = m.name;
             link.shared = true;
-            link.output = std::format("{}/{}", plan.out_dir, driver.shared_lib_file(m.name));
+            std::string file_name = driver.shared_lib_file(m.name);
+            link.output = std::format("{}/{}", plan.out_dir, file_name);
             link.inputs = core_objects;
             append(link.inputs, main_dep_inputs);
             link.extra_libs = main_dep_libs;
             link.implicit = main_dep_implicit;
             std::optional<std::string> implib = driver.import_lib_file(m.name);
             std::string implib_path = implib ? std::format("{}/{}", plan.out_dir, *implib) : std::string();
-            link.extra_ldflags = driver.shared_link_flags(implib_path);
+            link.extra_ldflags = driver.shared_link_flags(file_name, implib_path);
             plan.main_output = link.output;
             if (implib) {
                 // Declared as an output so Ninja creates its directory and knows who writes it.
@@ -215,7 +216,10 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
                 test_implicit.push_back(link.output);
             } else {
                 test_extra_libs.push_back(link.output);
-                if (tc.os != Os::Windows) test_ldflags.push_back("-Wl,-rpath,$ORIGIN/..");
+                test_implicit.push_back(link.output);
+                // Tests live in build/<profile>/tests/, the library one level up.
+                if (tc.os == Os::MacOS) test_ldflags.push_back("-Wl,-rpath,@loader_path/..");
+                else if (tc.os != Os::Windows) test_ldflags.push_back("-Wl,-rpath,$ORIGIN/..");
             }
             plan.main = std::move(link);
             break;

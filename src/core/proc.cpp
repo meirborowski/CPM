@@ -25,6 +25,7 @@
 #else
 #include <cerrno>
 #include <cstring>
+#include <iterator>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -468,8 +469,10 @@ std::vector<std::string> build_environment(const Command& cmd) {
     return out;
 }
 
-// Forks and execs; in/out/err are file descriptors to install as 0/1/2, or -1 to inherit.
-pid_t spawn(const Command& cmd, int in, int out, int err) {
+// Forks and execs; in/out/err are file descriptors to install as 0/1/2, or -1 to inherit. With
+// `own_group` the child leads a new process group, so a timeout can kill everything it started (the
+// POSIX counterpart of the Windows job object).
+pid_t spawn(const Command& cmd, int in, int out, int err, bool own_group) {
     fs::path program = resolve_program(cmd);
     std::vector<std::string> env_strings = build_environment(cmd);
     std::vector<char*> argv, envp;
@@ -486,6 +489,7 @@ pid_t spawn(const Command& cmd, int in, int out, int err) {
     pid_t pid = fork();
     if (pid < 0) throw Error(std::format("cannot start {}: {}", cmd.argv[0], std::strerror(errno)));
     if (pid == 0) {
+        if (own_group) setpgid(0, 0);
         // Ignored signal dispositions survive exec; the child must start with the defaults.
         signal(SIGINT, SIG_DFL);
         signal(SIGQUIT, SIG_DFL);
@@ -502,6 +506,9 @@ pid_t spawn(const Command& cmd, int in, int out, int err) {
         (void)!write(err_w.get(), &e, sizeof e);
         _exit(127);
     }
+    // Both sides set the group, so it exists before either one relies on it (EACCES after the child's exec
+    // means the child already did it).
+    if (own_group) setpgid(pid, pid);
     err_w.reset();
     int child_errno = 0;
     ssize_t n;
@@ -522,7 +529,54 @@ int decode_status(int status) {
     return -1;
 }
 
-int wait_child(pid_t pid, std::optional<std::chrono::milliseconds> timeout, bool& timed_out) {
+// A child in its own process group no longer receives the terminal's Ctrl-C, so while one runs, SIGINT,
+// SIGTERM and SIGHUP sent to CPM are passed on to its group. Construct the guard before spawning (so no
+// signal is lost in between), attach the child, and re-raise forwarded() once the child is gone.
+volatile sig_atomic_t g_group = 0;
+volatile sig_atomic_t g_forwarded = 0;
+
+extern "C" void forward_to_group(int sig) {
+    g_forwarded = sig;
+    if (g_group > 0) kill(-static_cast<pid_t>(g_group), sig);
+}
+
+class GroupSignals {
+public:
+    explicit GroupSignals(bool active) : active_(active) {
+        if (!active_) return;
+        g_group = 0;
+        g_forwarded = 0;
+        struct sigaction forward {};
+        forward.sa_handler = forward_to_group;
+        sigemptyset(&forward.sa_mask);
+        for (std::size_t i = 0; i < std::size(kSignals); ++i) sigaction(kSignals[i], &forward, &old_[i]);
+    }
+    ~GroupSignals() { restore(); }
+    GroupSignals(const GroupSignals&) = delete;
+    GroupSignals& operator=(const GroupSignals&) = delete;
+
+    void attach(pid_t group) {
+        if (!active_) return;
+        g_group = group;
+        if (int sig = g_forwarded) kill(-group, sig);  // arrived while the child was being started
+    }
+    // Restores CPM's own handlers and returns the signal that was forwarded, if any.
+    int restore() {
+        if (!active_) return 0;
+        active_ = false;
+        for (std::size_t i = 0; i < std::size(kSignals); ++i) sigaction(kSignals[i], &old_[i], nullptr);
+        g_group = 0;
+        return g_forwarded;
+    }
+
+private:
+    static constexpr int kSignals[] = {SIGINT, SIGTERM, SIGHUP};
+    bool active_;
+    struct sigaction old_[std::size(kSignals)] {};
+};
+
+// `group`: the child leads its own process group, and a timeout kills the whole group.
+int wait_child(pid_t pid, std::optional<std::chrono::milliseconds> timeout, bool& timed_out, bool group = false) {
     int status = 0;
     if (!timeout) {
         while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
@@ -535,8 +589,9 @@ int wait_child(pid_t pid, std::optional<std::chrono::milliseconds> timeout, bool
         if (r == pid) return decode_status(status);
         if (std::chrono::steady_clock::now() >= deadline) {
             timed_out = true;
-            kill(pid, SIGKILL);
-            waitpid(pid, &status, 0);
+            kill(group ? -pid : pid, SIGKILL);
+            while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+            }
             return -1;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -550,26 +605,31 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     auto [err_r, err_w] = make_pipe();
     Fd in = null_stdin ? open_null() : Fd();
     log::trace(command_line(cmd.argv));
-    pid_t pid = spawn(cmd, in.get(), out_w.get(), err_w.get());
+    const bool own_group = timeout.has_value();  // with a timeout, the child gets its own process group
+    GroupSignals signals(own_group);
+    pid_t pid = spawn(cmd, in.get(), out_w.get(), err_w.get(), own_group);
+    signals.attach(pid);
     out_w.reset();
     err_w.reset();
 
     Captured result;
-    auto deadline = timeout ? std::optional(std::chrono::steady_clock::now() + *timeout) : std::nullopt;
+    // A plain time_point rather than std::optional: GCC 13 warns (wrongly) that the optional's value may be
+    // used uninitialized.
+    const auto deadline = std::chrono::steady_clock::now() + timeout.value_or(std::chrono::milliseconds(0));
     pollfd fds[2] = {{out_r.get(), POLLIN, 0}, {err_r.get(), POLLIN, 0}};
     std::string* sinks[2] = {&result.out, &result.err};
     int open_count = 2;
     bool killed = false;
     while (open_count > 0) {
         int wait_ms = -1;
-        if (deadline && !killed) {
-            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(*deadline - std::chrono::steady_clock::now());
+        if (own_group && !killed) {
+            auto left = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now());
             wait_ms = static_cast<int>(std::max<long long>(0, left.count()));
         }
         int r = poll(fds, 2, wait_ms);
         if (r < 0 && errno == EINTR) continue;
-        if (r == 0 && deadline && !killed) {
-            kill(pid, SIGKILL);
+        if (r == 0 && own_group && !killed) {
+            kill(-pid, SIGKILL);  // the whole group: grandchildren could keep the pipes open
             killed = true;
             result.timed_out = true;
             continue;
@@ -589,6 +649,7 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     bool ignored = false;
     result.exit_code = wait_child(pid, std::nullopt, ignored);
     if (result.timed_out) result.exit_code = -1;
+    if (int sig = signals.restore()) raise(sig);  // e.g. Ctrl-C during `cpm test` still stops CPM
     return result;
 }
 
@@ -596,7 +657,18 @@ int run(const Command& cmd, const RunOptions& options) {
     Fd in = options.null_stdin ? open_null() : Fd();
     int out = options.stdout_mode == Stdout::ToStderr ? 2 : -1;
     log::trace(command_line(cmd.argv));
-    pid_t pid = spawn(cmd, in.get(), out, -1);
+    if (options.timeout) {
+        GroupSignals signals(true);
+        pid_t pid = spawn(cmd, in.get(), out, -1, true);
+        signals.attach(pid);
+        bool timed_out = false;
+        int code = wait_child(pid, options.timeout, timed_out, true);
+        int sig = signals.restore();
+        // With forward_interrupts the child decides what Ctrl-C means and CPM carries on.
+        if (sig && !(options.forward_interrupts && (sig == SIGINT))) raise(sig);
+        return code;
+    }
+    pid_t pid = spawn(cmd, in.get(), out, -1, false);
     struct sigaction ignore {}, old_int{}, old_quit{};
     if (options.forward_interrupts) {
         ignore.sa_handler = SIG_IGN;

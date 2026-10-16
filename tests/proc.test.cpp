@@ -62,13 +62,17 @@ TEST(passes_environment_and_cwd) {
 }
 
 TEST(kills_on_timeout) {
+    // The shell starts a grandchild that holds the output pipes, so killing only the shell would leave
+    // capture() waiting for the full 30 seconds.
+    auto start = std::chrono::steady_clock::now();
 #ifdef _WIN32
-    auto r = proc::capture(shell("ping -n 30 127.0.0.1 >nul"), std::chrono::milliseconds(300));
+    auto r = proc::capture(shell("ping -n 30 127.0.0.1 >nul& echo done"), std::chrono::milliseconds(300));
 #else
-    auto r = proc::capture(shell("sleep 30"), std::chrono::milliseconds(300));
+    auto r = proc::capture(shell("sleep 30; echo done"), std::chrono::milliseconds(300));
 #endif
     CHECK(r.timed_out);
     CHECK_EQ(r.exit_code, -1);
+    CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
 }
 
 TEST(missing_program_is_an_error) {

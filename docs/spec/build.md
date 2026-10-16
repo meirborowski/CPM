@@ -210,7 +210,7 @@ After generating `build.ninja`, CPM runs `ninja -f <file> -t compdb cxx` and wri
 
 ### 4.7 Shared libraries at run time (*post-MVP for shared-library dependencies*)
 
-- A root `shared-lib` target is supported in the MVP: `-shared`, plus `-fPIC` off Windows. On MinGW it adds `-Wl,--out-implib,<lib>.dll.a`, and every symbol is exported automatically when the code has no `__declspec(dllexport)`.
+- A root `shared-lib` target is supported in the MVP: `-shared`, plus `-fPIC` off Windows. On MinGW it adds `-Wl,--out-implib,<lib>.dll.a`, and every symbol is exported automatically when the code has no `__declspec(dllexport)`. On Linux it adds `-Wl,-soname,lib<name>.so`, on macOS `-dynamiclib -Wl,-install_name,@rpath/lib<name>.dylib`, so dependents record the file name rather than the build path. The package's tests depend on the library and find it through `-Wl,-rpath,$ORIGIN/..` (macOS: `@loader_path/..`).
 - For shared-library **dependencies**, CPM copies their runtime files into `build/<profile>/` after linking on Windows (there is no rpath). On ELF and Mach-O it adds `-Wl,-rpath,<absolute store lib dir>`.
 
 ## 5. Dependency builds

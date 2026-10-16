@@ -44,8 +44,10 @@ public:
     virtual std::string include_flag(std::string_view dir) const = 0;
     virtual std::vector<std::string> lib_flags(std::string_view dir, std::string_view link_name) const = 0;
     virtual std::string system_lib_flag(std::string_view name) const = 0;
-    // Extra link flags when producing a shared library (`import_lib`: where to put the import library).
-    virtual std::vector<std::string> shared_link_flags(std::string_view import_lib) const = 0;
+    // Extra link flags when producing a shared library. `file_name`: the library's file name (shared_lib_file),
+    // recorded as its soname / install name so that dependents find it through their rpath. `import_lib`: where
+    // to put the import library.
+    virtual std::vector<std::string> shared_link_flags(std::string_view file_name, std::string_view import_lib) const = 0;
 
     virtual std::string object_ext() const = 0;
     virtual std::string exe_file(std::string_view name) const = 0;

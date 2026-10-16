@@ -201,6 +201,7 @@ Rules:
 - **Escaping:** in `build` lines, `$` → `$$`, space → `$ `, `:` → `$:`. In variable values, `$` → `$$`. Newlines are never allowed. Arguments that contain spaces are quoted for the command interpreter: MSVC-CRT argv quoting on Windows (Ninja calls `CreateProcess` directly), single quotes on POSIX (`/bin/sh -c`).
 - **Response files** are used for every link and archive step, which avoids the 32 KiB command-line limit on Windows.
 - **Dependency stamp:** with dependencies, CPM writes `cpm_modules/.cache/<profile>/dependencies.stamp` (only when its content changes) listing every dependency's version and identity (integrity, git commit or path) and the ABI, and every compile and link edge depends on it. `cpm_modules` links can point at different files under the same paths, possibly with older timestamps, which Ninja alone would not notice; the stamp makes any dependency change rebuild the dependents.
+- **macOS archives:** the BSD `ar` there does not read `@file` response files, so on macOS the `ar` rule passes the objects directly: `$ar rcs $out $in`.
 - **Stale archive members:** `ar rcs` never removes members. CPM records each archive's member list in `archives.json`. When the list changes, it deletes the archive before running Ninja, so the archive is rebuilt from scratch.
 - **No self-regeneration rule.** CPM always regenerates before invoking Ninja, so Ninja never needs to rerun CPM.
 

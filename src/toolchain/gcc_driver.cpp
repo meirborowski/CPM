@@ -14,9 +14,12 @@ public:
     explicit GccDriver(const Toolchain& tc) : tc_(tc) {}
 
     std::vector<NinjaRule> rules() const override {
+        // macOS's BSD ar has no @file response files; its command lines may be long enough (ARG_MAX ~1 MB).
+        NinjaRule ar = tc_.os == Os::MacOS ? NinjaRule{"ar", "$ar rcs $out $in", "AR $out", "", "", "", ""}
+                                           : NinjaRule{"ar", "$ar rcs $out @$out.rsp", "AR $out", "", "", "$out.rsp", "$in"};
         return {
             {"cxx", "$cxx -MD -MF $out.d $cxxflags $defines $incs -c $in -o $out", "CXX $in", "$out.d", "gcc", "", ""},
-            {"ar", "$ar rcs $out @$out.rsp", "AR $out", "", "", "$out.rsp", "$in"},
+            ar,
             {"link", "$cxx @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
             {"link_shared", "$cxx -shared @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
         };

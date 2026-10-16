@@ -211,6 +211,8 @@ TEST(static_and_shared_library_plans) {
     CHECK_EQ(mplan.main->extra_ldflags,
              (std::vector<std::string>{"-dynamiclib", "-Wl,-install_name,@rpath/libhello.dylib"}));
     CHECK_EQ(mplan.tests[0].extra_ldflags, (std::vector<std::string>{"-Wl,-rpath,@loader_path/.."}));
+    // macOS's ar reads no response files.
+    CHECK(build::generate_ninja(mplan, *mdriver).contains("rule ar\n  command = $ar rcs $out $in\n"));
 
     tc.os = Os::Windows;  // MinGW: DLL plus import library
     auto wdriver = toolchain::make_driver(tc);

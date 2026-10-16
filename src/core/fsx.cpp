@@ -76,8 +76,17 @@ void create_dirs(const fs::path& p) {
 
 void rename_replace(const fs::path& from, const fs::path& to) {
 #ifdef _WIN32
-    if (!MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-        throw Error(std::format("cannot rename '{}' to '{}': {}", show(from), show(to), last_error_text()));
+    // Virus scanners and the search indexer briefly open new files without FILE_SHARE_DELETE, which makes the
+    // rename fail with "access denied" or a sharing violation. Retry for about half a second, as npm and Cargo do.
+    for (int attempt = 0;; ++attempt) {
+        if (MoveFileExW(from.c_str(), to.c_str(), MOVEFILE_REPLACE_EXISTING)) return;
+        DWORD code = GetLastError();
+        bool transient = code == ERROR_ACCESS_DENIED || code == ERROR_SHARING_VIOLATION || code == ERROR_LOCK_VIOLATION;
+        if (!transient || attempt == 10) {
+            SetLastError(code);
+            throw Error(std::format("cannot rename '{}' to '{}': {}", show(from), show(to), last_error_text()));
+        }
+        Sleep(static_cast<DWORD>(10 * (attempt + 1)));  // 10 ms, 20 ms, ... 550 ms in all
     }
 #else
     if (std::rename(from.c_str(), to.c_str()) != 0) {

@@ -1,13 +1,36 @@
 #include "json/parse.hpp"
 
+#include <cerrno>
 #include <charconv>
+#include <cstdlib>
 #include <format>
+#include <optional>
+#include <string>
 
 #include "core/strings.hpp"
 
 namespace cpm::json {
 
 namespace {
+
+// `token` is already a valid JSON number. Apple's libc++ has no floating-point std::from_chars yet (it does
+// not define __cpp_lib_to_chars), so strtod stands in there: CPM never changes the C locale, so the decimal
+// point is always '.'.
+std::optional<double> to_double(std::string_view token) {
+#if defined(__cpp_lib_to_chars)
+    double value = 0;
+    auto [p, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
+    if (ec != std::errc() || p != token.data() + token.size()) return std::nullopt;
+    return value;
+#else
+    std::string copy(token);
+    char* end = nullptr;
+    errno = 0;
+    double value = std::strtod(copy.c_str(), &end);
+    if (errno == ERANGE || end != copy.c_str() + copy.size()) return std::nullopt;
+    return value;
+#endif
+}
 
 class Parser {
 public:
@@ -289,10 +312,9 @@ private:
             auto [p, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
             if (ec == std::errc() && p == token.data() + token.size()) return Value(value);
         }
-        double value = 0;
-        auto [p, ec] = std::from_chars(token.data(), token.data() + token.size(), value);
-        if (ec != std::errc() || p != token.data() + token.size()) fail_at("number out of range", start);
-        return Value(value);
+        std::optional<double> value = to_double(token);
+        if (!value) fail_at("number out of range", start);
+        return Value(*value);
     }
 };
 

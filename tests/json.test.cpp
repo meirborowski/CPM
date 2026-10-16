@@ -15,6 +15,8 @@ TEST(parses_scalars) {
     CHECK_EQ(json::parse("\"hi\"").as_string(), "hi");
     CHECK_EQ(json::parse("9223372036854775807").as_int(), INT64_MAX);
     CHECK(json::parse("9223372036854775808").type() == json::Type::Double);  // overflow -> double
+    CHECK_EQ(json::parse("-0.125e-1").as_double(), -0.0125);
+    CHECK_THROWS(json::parse("1e999"), "number out of range");
 }
 
 TEST(parses_string_escapes) {

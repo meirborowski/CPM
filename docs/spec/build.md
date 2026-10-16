@@ -22,7 +22,7 @@ The first source that names a compiler wins:
 1. `--cxx <name|path>` on the command line
 2. the `CXX` environment variable
 3. `"cxx"` in `$CPM_HOME/config.jsonc`
-4. auto-detection on `PATH`: `clang++`, then `g++` (and on Windows, once the MSVC driver exists: `cl.exe` on `PATH`, then the latest Visual Studio found by `vswhere`)
+4. auto-detection on `PATH`: `clang++`, then `g++` (and on Windows, once the MSVC driver exists: `cl.exe` on `PATH`, then the latest Visual Studio found by `vswhere`). Until then, a `clang++` that targets the MSVC ABI (`*-windows-msvc`, as installed by LLVM's Windows installer or Visual Studio) is skipped by auto-detection; named explicitly, it is an error with a hint to use a MinGW toolchain.
 
 A bare name is looked up on `PATH`. On Windows the lookup tries only `.exe` and `.com`, the extensions `CreateProcess` can start directly, rather than every `PATHEXT` entry. The resolved absolute path identifies the toolchain from then on.
 

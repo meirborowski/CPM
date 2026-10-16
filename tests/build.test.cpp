@@ -280,4 +280,15 @@ TEST(parses_probe_output) {
     CHECK_EQ(ctc.stdlib_abi, "v1");
     CHECK_EQ(ctc.crt, "glibc");
     CHECK_EQ(ctc.eh, "itanium");
+    CHECK(!toolchain::targets_msvc(tc));
+    CHECK(!toolchain::targets_msvc(ctc));
+
+    // LLVM's Windows installer: clang++ targeting the MSVC ABI, which auto-detection skips.
+    std::string msvc_clang = "#define __clang__ 1\n#define __clang_major__ 19\n#define __clang_minor__ 1\n"
+                             "#define __clang_patchlevel__ 5\n#define _MSC_VER 1940\n#define _WIN32 1\n#define _M_X64 100\n";
+    auto mtc = toolchain::toolchain_from_probe(
+        toolchain::parse_probe_output(msvc_clang, "clang version 19.1.5\nTarget: x86_64-pc-windows-msvc\n"),
+        "C:/Program Files/LLVM/bin/clang++.exe");
+    CHECK(mtc.family == toolchain::Family::Clang);
+    CHECK(toolchain::targets_msvc(mtc));
 }

@@ -61,6 +61,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         env:
+          CXX: g++
           CPM_HOME: ${{ runner.temp }}/cpm-home
         run: |
           $ErrorActionPreference = 'Stop'

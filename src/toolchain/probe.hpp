@@ -33,4 +33,8 @@ struct ProbeOutput {
 ProbeOutput parse_probe_output(std::string_view macros_text, std::string_view verbose_text);
 Toolchain toolchain_from_probe(const ProbeOutput& probe, const std::filesystem::path& cxx);
 
+// Clang targeting the MSVC ABI (*-windows-msvc, as installed by LLVM's Windows installer or Visual Studio). It
+// links like MSVC (.lib files, lld-link), which needs the MSVC driver (post-MVP).
+bool targets_msvc(const Toolchain& tc);
+
 }  // namespace cpm::toolchain

@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <format>
+#include <vector>
 
 #include "core/env.hpp"
 #include "core/error.hpp"
@@ -51,7 +52,12 @@ std::string tail(std::string_view text, std::size_t lines) {
     return str::join(kept, "\n");
 }
 
-fs::path select_compiler(const Selection& sel) {
+struct Candidates {
+    std::vector<fs::path> paths;  // in order of preference
+    bool requested = false;       // named by --cxx, CXX or config.jsonc rather than auto-detected
+};
+
+Candidates compiler_candidates(const Selection& sel) {
     std::optional<std::string> requested;
     std::string source;
     if (sel.cli_cxx) {
@@ -65,31 +71,28 @@ fs::path select_compiler(const Selection& sel) {
         source = "config.jsonc";
     }
 
-    fs::path found;
+    Candidates out;
     if (requested) {
         auto p = proc::find_program(*requested);
         if (!p) throw Error(std::format("compiler '{}' (from {}) not found", *requested, source),
                             "check the name, or give a full path");
-        found = *p;
-    } else {
-        for (const char* name : {"clang++", "g++"}) {
-            if (auto p = proc::find_program(name)) {
-                found = *p;
-                break;
-            }
+        std::string stem = str::to_lower(paths::to_utf8(p->stem()));
+        if (stem == "cl" || stem == "clang-cl") {
+            throw Error(std::format("'{}' is an MSVC-style compiler, which CPM does not support yet", paths::to_utf8(*p)),
+                        "the MSVC driver is planned after the MVP; use g++ or clang++ for now (e.g. --cxx g++)");
         }
-        if (found.empty()) {
-            throw Error("no C++ compiler found (looked for clang++ and g++ on PATH)",
-                        "install GCC or Clang, or point CXX or --cxx at a compiler");
-        }
+        out.paths.push_back(*p);
+        out.requested = true;
+        return out;
     }
-
-    std::string stem = str::to_lower(paths::to_utf8(found.stem()));
-    if (stem == "cl" || stem == "clang-cl") {
-        throw Error(std::format("'{}' is an MSVC-style compiler, which CPM does not support yet", paths::to_utf8(found)),
-                    "the MSVC driver is planned after the MVP; use g++ or clang++ for now (e.g. --cxx g++)");
+    for (const char* name : {"clang++", "g++"}) {
+        if (auto p = proc::find_program(name)) out.paths.push_back(*p);
     }
-    return found;
+    if (out.paths.empty()) {
+        throw Error("no C++ compiler found (looked for clang++ and g++ on PATH)",
+                    "install GCC or Clang, or point CXX or --cxx at a compiler");
+    }
+    return out;
 }
 
 fs::path find_archiver(const Toolchain& tc) {
@@ -308,11 +311,16 @@ Toolchain toolchain_from_probe(const ProbeOutput& p, const fs::path& cxx) {
     return tc;
 }
 
-Toolchain find_toolchain(const Selection& sel) {
-    fs::path cxx = select_compiler(sel);
-    Stamp stamp = stamp_of(cxx);
+bool targets_msvc(const Toolchain& tc) {
+    return tc.os == Os::Windows && tc.target.find("-msvc") != std::string::npos;
+}
 
-    json::Value cache = load_cache(sel.home);
+namespace {
+
+// Probes one compiler, or takes the answer from $CPM_HOME/toolchains.json when the compiler is unchanged.
+Toolchain probe_compiler(const fs::path& cxx, const fs::path& home) {
+    Stamp stamp = stamp_of(cxx);
+    json::Value cache = load_cache(home);
     if (const json::Value* entry = cache.find("toolchains")->find(paths::to_utf8(cxx))) {
         if (auto tc = from_json(*entry, cxx, stamp)) {
             log::trace(std::format("toolchain cache hit: {}", paths::to_utf8(cxx)));
@@ -321,7 +329,7 @@ Toolchain find_toolchain(const Selection& sel) {
     }
 
     log::verbose(std::format("probing {}", paths::to_utf8(cxx)));
-    fs::path probe = scratch_file(sel.home, "probe.cpp", "#include <version>\n#include <cstdlib>\n");
+    fs::path probe = scratch_file(home, "probe.cpp", "#include <version>\n#include <cstdlib>\n");
     proc::Command cmd{.argv = {paths::to_utf8(cxx), "-v", "-x", "c++", "-E", "-dM", paths::to_utf8(probe)}};
     proc::Captured r = proc::capture(cmd);
     if (r.exit_code != 0) {
@@ -331,8 +339,27 @@ Toolchain find_toolchain(const Selection& sel) {
     }
     Toolchain tc = toolchain_from_probe(parse_probe_output(r.out, r.err), cxx);
     tc.ar = find_archiver(tc);
-    store_in_cache(sel.home, tc);
+    store_in_cache(home, tc);
     return tc;
+}
+
+}  // namespace
+
+Toolchain find_toolchain(const Selection& sel) {
+    Candidates found = compiler_candidates(sel);
+    for (std::size_t i = 0; i < found.paths.size(); ++i) {
+        Toolchain tc = probe_compiler(found.paths[i], sel.home);
+        if (!targets_msvc(tc)) return tc;
+        // Auto-detection moves on (clang++ is tried first, and Windows machines often have an MSVC-targeting one).
+        if (found.requested || i + 1 == found.paths.size()) {
+            throw Error(std::format("{} targets the MSVC ABI ({}), which CPM does not support yet", paths::to_utf8(tc.cxx),
+                                    tc.target),
+                        "use a MinGW toolchain (g++ or clang++ from MSYS2 or llvm-mingw), e.g. --cxx g++; "
+                        "the MSVC driver is planned after the MVP");
+        }
+        log::verbose(std::format("skipping {}: it targets the MSVC ABI ({})", paths::to_utf8(tc.cxx), tc.target));
+    }
+    throw Error("no usable C++ compiler found");  // not reached: compiler_candidates never returns an empty list
 }
 
 std::string std_flag(Toolchain& tc, const std::string& std, const fs::path& home) {

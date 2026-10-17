@@ -21,6 +21,7 @@ const OptionSpec kProfileOption{"profile", 0, true, "<name>", "Build profile (de
 const OptionSpec kReleaseOption{"release", 0, false, "", "Same as --profile release"};
 const OptionSpec kJobsOption{"jobs", 'j', true, "<n>", "Parallel jobs passed to Ninja"};
 const OptionSpec kCxxOption{"cxx", 0, true, "<compiler>", "C++ compiler to use (name or path)"};
+const OptionSpec kRegistryOption{"registry", 0, true, "<name|url>", "Registry service (default: the default registry)"};
 
 const std::vector<OptionSpec> kGlobalOptions = {
     {"dir", 'C', true, "<path>", "Run as if started in <path>"},
@@ -84,6 +85,18 @@ const std::vector<Command>& command_table() {
            {"with-binary", 0, false, "", "Also publish a prebuilt binary (not supported yet)"},
            {"dry-run", 0, false, "", "Check and pack, but write nothing"}}},
          &cmd_publish, ""},
+        {{"login", {}, "Sign in to a registry service with GitHub", "cpm login [options]",
+          {kRegistryOption, {"with-token", 0, false, "", "Read a token from standard input instead (for CI)"}}},
+         &cmd_login, ""},
+        {{"logout", {}, "Sign out of a registry service and revoke the token", "cpm logout [options]", {kRegistryOption}},
+         &cmd_logout, ""},
+        {{"whoami", {}, "Show the account you are signed in as", "cpm whoami [options]", {kRegistryOption}}, &cmd_whoami, ""},
+        {{"yank", {}, "Hide a published version from new installs", "cpm yank <name>@<version> [options]",
+          {kRegistryOption, {"undo", 0, false, "", "Reverse a yank"}}},
+         &cmd_yank, ""},
+        {{"owner", {}, "List or change the owners of a package", "cpm owner list <name> | add|remove <name> <github-login>",
+          {kRegistryOption}},
+         &cmd_owner, ""},
     };
     return table;
 }

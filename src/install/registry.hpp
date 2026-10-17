@@ -58,6 +58,10 @@ public:
     // registry's config.json. For `cpm publish`, which adds a version to it.
     std::optional<std::string> index_text(const std::string& name);
 
+    // The base URL of a registry service's API (config.json "api", registry.md §7), with a trailing '/'; nullopt
+    // for a static registry.
+    const std::optional<std::string>& api();
+
 private:
     std::optional<std::string> fetch(const std::string& relative);
     void check_config();
@@ -67,6 +71,7 @@ private:
     fs::path home_, cache_;
     Freshness freshness_;
     bool config_checked_ = false;
+    std::optional<std::string> api_;
     std::map<std::string, std::optional<RegistryPackage>> packages_;
 };
 

@@ -1,10 +1,11 @@
 # Registry protocol (static index, API version 1)
 
-A CPM registry is **a base URL that serves static files**. No server-side logic is needed, so a registry can be:
+A CPM registry is **a base URL that serves static files**. Installing needs no server-side logic, so a registry can be:
 
 - a local directory: `file:///C:/registries/local/`, `file:///srv/cpm/`
 - any static HTTPS host: GitHub Pages, `raw.githubusercontent.com/<org>/<repo>/<branch>/`, S3, nginx
 - a git repository served through one of the above
+- a **registry service** that serves the same files and also accepts publishes from signed-in users through an HTTP API (§7), the way npm's registry does
 
 All registry files are strict JSON (no comments), UTF-8. CPM normalises a base URL to end with `/`, so relative URLs resolve inside it (RFC 3986).
 
@@ -33,6 +34,7 @@ Only `config.json` and `index/<name>.json` have fixed paths. Archive URLs are wh
 |---|---|---|
 | `apiVersion` | integer | **Required.** `1`. A client MUST refuse a registry whose `apiVersion` it does not support. |
 | `name` | string | Human-readable name, used in messages. |
+| `api` | string | Only for registry services (§7): the base URL of the write API, absolute or relative to the registry's base, e.g. `"api/v1/"`. Its presence tells clients that `cpm login` and `cpm publish` work against this registry. |
 
 ## 3. Index documents
 
@@ -112,7 +114,7 @@ Only `config.json` and `index/<name>.json` have fixed paths. Archive URLs are wh
   - `--prefer-offline` uses cached documents of any age and fetches only missing ones.
 - **Downloads:** `https://` goes through `curl -sS -L --retry 2 --proto =https -o <tmp> -w %{http_code} <url>` (`--proto =https,http` when the registry allows http); a 404 or 410 means "not found", other non-2xx statuses are errors. `file://` is copied natively. `http://` is refused unless the registry is configured with `"allowHttp": true`. If fetching an index fails but a cached copy exists, CPM warns and uses the cached copy.
 - **Verification:** the archive's SHA-256 is checked before it is extracted or cached. On a mismatch the file is deleted and CPM fails with `integrity check failed for fmt@10.2.1 (expected sha256:…, got sha256:…)`.
-- **Authentication** (*post-MVP*): a per-registry `token` in the configuration, sent as `Authorization: Bearer <token>` (via a curl config file passed on stdin, never on the command line).
+- **Authentication:** reads need none. Writes to a registry service (§7) carry `Authorization: Bearer <token>`, with the token from `cpm login` stored in `$CPM_HOME/credentials.json` (§7.2). CPM hands it to curl in a config file on standard input, never on the command line.
 
 ## 6. Publishing
 
@@ -122,6 +124,78 @@ Only `config.json` and `index/<name>.json` have fixed paths. Archive URLs are wh
 2. **Files.** Always `cpm.jsonc` and the top-level `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*` and `README*`, plus either the manifest's `files` globs or, by default, `CHANGELOG*`, `<include>/**`, `src/**`, the `sources` globs (or their defaults) and every platform's `sources`. Never `build/**`, `cpm-lock.json`, `cpm_modules/` or `.git/`. `!` globs remove matches, as in `sources`.
 3. **Archive.** `<name>-<version>.tar.gz`, written by CPM itself so it is the same on every platform: POSIX tar (pax headers for long paths) with entries sorted by path, a single top-level directory `<name>-<version>/` (so `stripComponents: 1`), parent directories included, mtime 0, uid/gid 0, no user or group names, mode 0755 for directories and 0644 for files, inside gzip with mtime 0 and OS "unknown". The same files therefore always give the same integrity.
 4. **Index.** The version entry has `source` (`packages/<name>/<name>-<version>.tar.gz`, the integrity, `stripComponents: 1`), `type`, `std` and `dependencies` from the manifest. No `manifest` overlay is needed, since the archive carries `cpm.jsonc`. It is added to `index/<name>.json`, which is created if needed and keeps versions oldest first. An existing document must be valid (§3), and a version that is already there is an error: published versions never change.
-5. **Destination.** A `file://` registry is written in place, the archive first and then the index document, both atomically, under the lock file `.cpm-publish.lock` in the registry root. For any other registry, `--out <dir>` writes the same two files under `<dir>` (built on the registry's current index), to be committed or uploaded. Without `--out` that is an error.
+5. **Destination.** A registry service (one whose `config.json` has `api`) receives the archive through the publish endpoint (§7.3), which runs the same checks again on the server and writes the index itself. A `file://` registry is written in place, the archive first and then the index document, both atomically, under the lock file `.cpm-publish.lock` in the registry root. For any other registry, `--out <dir>` writes the same two files under `<dir>` (built on the registry's current index), to be committed or uploaded. Without `--out` that is an error. `--out` also works with a registry service, to inspect what would be uploaded.
 6. `--dry-run` performs steps 1–4 against the registry's current index, lists the files, and writes nothing.
 7. `--with-binary` (*post-MVP*) will also build the package for the local ABI and add a `binaries` entry.
+
+## 7. Registry service API (v1)
+
+A registry service is a server that answers the static reads of §1–§4 itself and adds an HTTP API for accounts and publishing, like npm's registry. Static clients cannot tell it apart from a static registry. Its `config.json` names the API base (`"api": "api/v1/"`), and every path below is relative to that base.
+
+### 7.1 Conventions
+
+- Requests and responses are JSON (`Content-Type: application/json`), except the archive upload of §7.3.
+- Errors use the HTTP status code (400 bad request, 401 not signed in, 403 not allowed, 404 not found, 409 conflict, 413 too large, 429 slowed down) and the body `{ "error": "<code>", "message": "<sentence for people>" }`. `<code>` is a stable identifier such as `version_exists`. CPM prints the message.
+- Authenticated requests carry `Authorization: Bearer <token>`. A token is an opaque string starting with `cpm_`. The server stores only its SHA-256.
+- Reads (`config.json`, `index/<name>.json`, archives) need no token. The index is served with a short cache lifetime (at most a minute). Archives are immutable and cached forever.
+
+### 7.2 Accounts and tokens
+
+Accounts are GitHub accounts: the service never stores passwords. Signing in on the service's website uses GitHub's web OAuth flow. `cpm login` uses GitHub's device flow, relayed by the service so that the CLI needs no GitHub app of its own:
+
+1. `POST login/device` → `{ "deviceCode", "userCode", "verificationUri", "interval", "expiresIn" }`. CPM prints the URL and the code, and opens the URL in a browser when it can.
+2. CPM polls `POST login/device/token` with `{ "deviceCode" }` every `interval` seconds. It gets 428 `authorization_pending` while the user has not finished, 429 `slow_down` (add 5 seconds to the interval), 400 `expired_token` or `access_denied`, and finally 200 `{ "token", "login" }`.
+3. CPM writes the token to `$CPM_HOME/credentials.json`, keyed by the registry's base URL. On POSIX it is created with mode 0600.
+
+```json
+{
+  "credentialsVersion": 1,
+  "registries": {
+    "https://registry.example.org/": { "token": "cpm_…" }
+  }
+}
+```
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `GET whoami` | token | `{ "login", "name", "avatarUrl" }` |
+| `GET tokens` | token | `{ "tokens": [{ "id", "name", "createdAt", "lastUsedAt" }] }`. Never the secret. |
+| `POST tokens` | token | `{ "name" }` → `{ "id", "token" }`. The secret is shown only once. |
+| `DELETE tokens/<id>` | token | Revokes a token. `DELETE tokens/current` revokes the one used for the request (`cpm logout`). |
+
+### 7.3 Publishing
+
+`PUT packages/<name>/<version>`, authenticated. The body is the `.tar.gz` of §6 (`Content-Type: application/gzip`, at most 20 MB), with two headers:
+
+- `X-Cpm-Integrity: sha256:<hex>`: what the client computed.
+- `X-Cpm-Package`: compact JSON `{ "type", "std", "dependencies" }`, the index entry fields the client derived from the manifest (§6 step 4).
+
+The server re-checks everything rather than trusting the client:
+
+- the name and version are valid (no build metadata), and the integrity matches the body
+- the archive is gzip and POSIX tar, holding only regular files and directories, all inside `<name>-<version>/`, with no absolute paths and no `..`
+- `<name>-<version>/cpm.jsonc` exists, its `name` and `version` match the URL, and its `dependencies` are registry ranges equal to the declared ones
+- the declared `std` equals the manifest's (default `c++20`), the declared `type` is a library type, and it equals the manifest's `type` when the manifest has one
+- the package is new, in which case the publisher becomes its first owner, or the publisher is an owner
+- the version is not published yet (409 `version_exists`). Published versions never change, and yanked ones are no exception.
+
+On success: 201 `{ "name", "version", "integrity" }`. The new version appears in `index/<name>.json` straight away, as `source.url` `packages/<name>/<name>-<version>.tar.gz` with `stripComponents: 1`.
+
+### 7.4 Yanking and owners
+
+| Endpoint | Auth | Description |
+|---|---|---|
+| `POST packages/<name>/<version>/yank` | owner | Marks the version `yanked` in the index: new resolutions skip it, existing lockfiles keep working (§3). |
+| `POST packages/<name>/<version>/unyank` | owner | Reverses it. |
+| `GET packages/<name>/owners` | — | `{ "owners": ["<login>", …] }` |
+| `PUT packages/<name>/owners/<login>` | owner | Adds an owner. The account must have signed in to the service once. |
+| `DELETE packages/<name>/owners/<login>` | owner | Removes an owner. The last owner cannot be removed. |
+
+### 7.5 Browsing
+
+For the service's website and a future `cpm search`:
+
+| Endpoint | Description |
+|---|---|
+| `GET search?q=<text>&page=<n>` | `{ "packages": [{ "name", "description", "latest", "type", "license" }], "total", "page" }`, matching names and descriptions, 20 per page |
+| `GET packages/<name>` | `{ "name", "description", "license", "repository", "homepage", "readme", "latest", "owners", "versions": [{ "version", "publishedAt", "yanked", "type", "std", "dependencies", "size" }] }` |

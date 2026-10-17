@@ -55,7 +55,8 @@ cpm i git+https://github.com/me/greet.git#v1.0.0   # add a library from git
 cpm i fmt@^12         # add a package from the default registry
 cpm update            # move every dependency to the newest version its range allows
 cpm remove mylib
-cpm publish           # publish this library to a registry
+cpm login             # sign in to a registry service with GitHub
+cpm publish           # publish this library to the registry
 ```
 
 ## Registries
@@ -73,7 +74,9 @@ A registry is a base URL serving static files: `config.json` plus one `index/<na
 
 or set `CPM_REGISTRY` to a base URL.
 
-A registry is created with a `config.json` containing `{ "apiVersion": 1 }`. `cpm publish --registry file:///path/to/registry/` adds the current library to it: CPM packs a reproducible source archive and updates the index. For a registry CPM cannot write to, `--out <dir>` writes the two files to upload instead. The `cpm-registry` repository, with recipes and scripts for fmt, spdlog, nlohmann-json, doctest, Catch2 and CLI11, is a ready-made starting point.
+**Registry services** work like npm's registry. You sign in with `cpm login` (GitHub), then `cpm publish` uploads the library, and the service checks it, stores it and serves it. `cpm yank` and `cpm owner` manage what you have published. The `cpm-registry` repository is such a service, running on Cloudflare Workers.
+
+**Static registries** need no server. A directory with a `config.json` containing `{ "apiVersion": 1 }` is one. `cpm publish --registry file:///path/to/registry/` adds the current library to it: CPM packs a reproducible source archive and updates the index. For a static host CPM cannot write to, `--out <dir>` writes the two files to upload instead.
 
 ## Building from source
 

@@ -162,11 +162,19 @@ void Registry::check_config() {
     } catch (const Error& e) {
         throw Error(std::format("the config.json of {} is invalid: {}", base_, e.what()));
     }
-    const json::Value* api = cfg.find("apiVersion");
-    if (api == nullptr || !api->is_int() || api->as_int() != 1) {
+    const json::Value* version = cfg.find("apiVersion");
+    if (version == nullptr || !version->is_int() || version->as_int() != 1) {
         throw Error(std::format("{} uses a registry API version this CPM does not understand", base_), "upgrade CPM");
     }
+    if (const json::Value* api = cfg.find("api"); api && api->is_string() && !api->as_string().empty()) {
+        api_ = url::as_base(url::join(base_, api->as_string()));
+    }
     config_checked_ = true;
+}
+
+const std::optional<std::string>& Registry::api() {
+    check_config();
+    return api_;
 }
 
 const RegistryPackage* Registry::package(const std::string& name) {

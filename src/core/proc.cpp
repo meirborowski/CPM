@@ -376,7 +376,16 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     Handle hout_r(out_r), hout_w(out_w), herr_r(err_r), herr_w(err_w);
     SetHandleInformation(out_r, HANDLE_FLAG_INHERIT, 0);
     SetHandleInformation(err_r, HANDLE_FLAG_INHERIT, 0);
-    Handle in = null_stdin ? open_nul() : dup_inheritable(GetStdHandle(STD_INPUT_HANDLE));
+    Handle in, in_w;
+    if (cmd.input) {
+        HANDLE r = nullptr, w = nullptr;
+        if (!CreatePipe(&r, &w, &sa, 0)) throw Error(std::format("cannot create a pipe: {}", win_error()));
+        in = Handle(r);
+        in_w = Handle(w);
+        SetHandleInformation(w, HANDLE_FLAG_INHERIT, 0);
+    } else {
+        in = null_stdin ? open_nul() : dup_inheritable(GetStdHandle(STD_INPUT_HANDLE));
+    }
 
     log::trace(command_line(cmd.argv));
     Spawned s = spawn(cmd, in.get(), out_w, err_w, timeout.has_value());
@@ -385,9 +394,23 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     in.reset();
 
     Captured result;
+    // The input goes from its own thread, so a child that writes much before reading cannot block us; closing
+    // the handle when the thread ends gives the child end-of-file.
+    std::thread t_in;
+    if (cmd.input) {
+        t_in = std::thread([w = std::move(in_w), data = std::string_view(*cmd.input)]() mutable {
+            while (!data.empty()) {
+                DWORD n = 0;
+                DWORD chunk = static_cast<DWORD>(std::min<std::size_t>(data.size(), 1 << 20));
+                if (!WriteFile(w.get(), data.data(), chunk, &n, nullptr) || n == 0) break;  // the child stopped reading
+                data.remove_prefix(n);
+            }
+        });
+    }
     std::thread t_out(read_all, out_r, &result.out);
     std::thread t_err(read_all, err_r, &result.err);
     result.exit_code = wait_for(s, timeout, result.timed_out);
+    if (t_in.joinable()) t_in.join();
     t_out.join();
     t_err.join();
     return result;
@@ -423,6 +446,11 @@ public:
     Fd(const Fd&) = delete;
     Fd& operator=(const Fd&) = delete;
     Fd(Fd&& o) noexcept : fd_(std::exchange(o.fd_, -1)) {}
+    Fd& operator=(Fd&& o) noexcept {
+        reset();
+        fd_ = std::exchange(o.fd_, -1);
+        return *this;
+    }
     ~Fd() { reset(); }
     void reset() {
         if (fd_ >= 0) close(fd_);
@@ -603,7 +631,14 @@ int wait_child(pid_t pid, std::optional<std::chrono::milliseconds> timeout, bool
 Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> timeout, bool null_stdin) {
     auto [out_r, out_w] = make_pipe();
     auto [err_r, err_w] = make_pipe();
-    Fd in = null_stdin ? open_null() : Fd();
+    Fd in, in_w;
+    if (cmd.input) {
+        auto [r, w] = make_pipe();
+        in = std::move(r);
+        in_w = std::move(w);
+    } else if (null_stdin) {
+        in = open_null();
+    }
     log::trace(command_line(cmd.argv));
     const bool own_group = timeout.has_value();  // with a timeout, the child gets its own process group
     GroupSignals signals(own_group);
@@ -611,6 +646,25 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     signals.attach(pid);
     out_w.reset();
     err_w.reset();
+    in.reset();
+
+    // The input goes from its own thread, so a child that writes much before reading cannot block us; closing
+    // the pipe when the thread ends gives the child end-of-file.
+    std::thread t_in;
+    if (cmd.input) {
+        t_in = std::thread([w = std::move(in_w), data = std::string_view(*cmd.input)]() mutable {
+            sigset_t pipe_only;
+            sigemptyset(&pipe_only);
+            sigaddset(&pipe_only, SIGPIPE);
+            pthread_sigmask(SIG_BLOCK, &pipe_only, nullptr);  // EPIPE instead of SIGPIPE if the child stops reading
+            while (!data.empty()) {
+                ssize_t n = write(w.get(), data.data(), data.size());
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                data.remove_prefix(static_cast<std::size_t>(n));
+            }
+        });
+    }
 
     Captured result;
     // A plain time_point rather than std::optional: GCC 13 warns (wrongly) that the optional's value may be
@@ -648,6 +702,7 @@ Captured capture(const Command& cmd, std::optional<std::chrono::milliseconds> ti
     }
     bool ignored = false;
     result.exit_code = wait_child(pid, std::nullopt, ignored);
+    if (t_in.joinable()) t_in.join();
     if (result.timed_out) result.exit_code = -1;
     if (int sig = signals.restore()) raise(sig);  // e.g. Ctrl-C during `cpm test` still stops CPM
     return result;

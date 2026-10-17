@@ -75,6 +75,21 @@ TEST(kills_on_timeout) {
     CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(10));
 }
 
+TEST(feeds_input_to_standard_input) {
+    cpm::proc::Command cmd =
+#ifdef _WIN32
+        shell("findstr x");
+#else
+        shell("grep x");
+#endif
+    cmd.input = std::string("one x\ntwo\nthree x\n") + std::string(200000, 'y') + "\n";  // larger than a pipe buffer
+    auto r = cpm::proc::capture(cmd);
+    CHECK_EQ(r.exit_code, 0);
+    CHECK(r.out.find("one x") != std::string::npos);
+    CHECK(r.out.find("three x") != std::string::npos);
+    CHECK(r.out.find("two") == std::string::npos);
+}
+
 TEST(missing_program_is_an_error) {
     CHECK_THROWS(cpm::proc::capture({.argv = {"definitely-not-a-program-cpm-test"}}), "program not found");
 }

@@ -27,5 +27,10 @@ int cmd_build(const ParsedArgs& args, Context& ctx);
 int cmd_run(const ParsedArgs& args, Context& ctx);
 int cmd_test(const ParsedArgs& args, Context& ctx);
 int cmd_publish(const ParsedArgs& args, Context& ctx);
+int cmd_login(const ParsedArgs& args, Context& ctx);
+int cmd_logout(const ParsedArgs& args, Context& ctx);
+int cmd_whoami(const ParsedArgs& args, Context& ctx);
+int cmd_yank(const ParsedArgs& args, Context& ctx);
+int cmd_owner(const ParsedArgs& args, Context& ctx);
 
 }  // namespace cpm::cli

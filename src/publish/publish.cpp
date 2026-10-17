@@ -15,6 +15,7 @@
 #include "core/strings.hpp"
 #include "install/fetch.hpp"
 #include "install/registry.hpp"
+#include "install/service.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
 #include "semver/version.hpp"
@@ -57,6 +58,39 @@ void check_dependencies(const manifest::Manifest& m) {
 }
 
 void append(std::vector<std::string>& to, const std::vector<std::string>& from) { to.insert(to.end(), from.begin(), from.end()); }
+
+// Sends the archive to a registry service (registry.md §7.3), which checks it again and updates its index.
+void upload(const std::string& api, install::Registry& registry, const manifest::Manifest& m, const Package& pkg,
+            const fs::path& home) {
+    auto token = install::service::load_token(home, registry.base());
+    if (!token) throw Error(std::format("you are not signed in to {}", registry.base()), "run cpm login");
+    json::Value deps = json::Value::object();
+    for (const auto& d : m.dependencies) deps.set(d.name, d.range);
+    json::Value declared = json::Value::object();
+    declared.set("type", std::string(manifest::to_string(pkg.type)));
+    declared.set("std", m.std);
+    declared.set("dependencies", std::move(deps));
+
+    fs::path file = home / "tmp" / std::format("publish-{}-{}.tar.gz", pkg.name, pkg.version);
+    fsx::write_file_atomic(file, pkg.archive);
+    struct Remove {
+        fs::path p;
+        ~Remove() {
+            std::error_code ec;
+            fs::remove(p, ec);
+        }
+    } remove{file};
+    install::service::Response r = install::service::send(
+        {.method = "PUT",
+         .url = std::format("{}packages/{}/{}", api, pkg.name, pkg.version),
+         .token = token,
+         .file_body = file,
+         .content_type = "application/gzip",
+         .headers = {{"X-Cpm-Integrity", pkg.integrity}, {"X-Cpm-Package", json::write(declared, {.compact = true})}},
+         .allow_http = registry.allow_http()},
+        home);
+    install::service::expect(r, {201});
+}
 
 }  // namespace
 
@@ -162,6 +196,11 @@ void publish(const fs::path& root, const Options& options, const manifest::UserC
         fsx::write_file_atomic(*options.out / paths::from_utf8(index_rel), doc);
         log::status("Wrote", std::format("{} and {} under {}; upload them to {}", pkg.archive_path, index_rel,
                                          paths::to_utf8(*options.out), base));
+        return;
+    }
+    if (const auto& api = registry.api()) {
+        upload(*api, registry, m, pkg, home);
+        log::status("Published", std::format("{}@{} to {}", pkg.name, pkg.version, base));
         return;
     }
     if (!install::url::is_file(base)) {

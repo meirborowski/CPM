@@ -170,6 +170,34 @@ cpm publish [--registry <name|url>] [--out <dir>] [--dry-run]
 
 Packs the current package and adds its version to a registry ([registry.md §6](registry.md#6-publishing)). Without `--registry` it uses the default registry. A `file://` registry is written directly. Any other registry needs `--out <dir>`, which writes the archive and the updated index document there, to be uploaded to the registry's host. `--dry-run` runs every check and packs the archive, then lists the files and writes nothing. `--with-binary` is reserved and currently refused.
 
+### `cpm login`, `cpm logout`, `cpm whoami`
+
+```
+cpm login [--registry <name|url>] [--with-token]
+cpm logout [--registry <name|url>]
+cpm whoami [--registry <name|url>]
+```
+
+For registry services ([registry.md §7](registry.md#7-registry-service-api-v1)); the default registry unless `--registry` is given. `cpm login` signs in with GitHub's device flow: it prints a code and a URL, opens the URL in a browser when it can, waits for the user to approve, and saves the token in `$CPM_HOME/credentials.json`. `--with-token` reads a token from standard input instead (for CI, with a token created on the service's website). `cpm logout` revokes the token on the service and removes it locally. `cpm whoami` prints the signed-in account.
+
+### `cpm yank`
+
+```
+cpm yank <name>@<version> [--undo] [--registry <name|url>]
+```
+
+Marks a published version as yanked, or with `--undo` reverses that ([registry.md §7.4](registry.md#74-yanking-and-owners)). Needs `cpm login` and ownership of the package.
+
+### `cpm owner`
+
+```
+cpm owner list <name> [--registry <name|url>]
+cpm owner add <name> <github-login> [--registry <name|url>]
+cpm owner remove <name> <github-login> [--registry <name|url>]
+```
+
+Lists or changes the owners of a package on a registry service. Changing them needs ownership.
+
 ### Reserved command names (*post-MVP*)
 
 `outdated`, `info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
@@ -224,7 +252,7 @@ User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
 }
 ```
 
-- A registry value is a URL string or an object `{ "url", "allowHttp" }`. A per-registry `token` is planned (*post-MVP*).
+- A registry value is a URL string or an object `{ "url", "allowHttp" }`. Tokens for registry services are not part of the configuration: `cpm login` keeps them in `$CPM_HOME/credentials.json` ([registry.md §7.2](registry.md#72-accounts-and-tokens)), so `config.jsonc` can be shared safely.
 - **Built-in default:** a CPM build may carry a built-in default registry URL (`src/install/default_registry.hpp`). It is used when no `default` registry is configured and `CPM_REGISTRY` is unset. Current builds carry none, so a registry dependency then fails with a hint showing how to configure one.
 - Unknown keys warn. Precedence for each setting: command-line option > environment variable > `config.jsonc` > built-in default.
 

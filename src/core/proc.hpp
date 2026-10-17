@@ -21,6 +21,9 @@ struct Command {
     // Windows only: append argv[1..] to the command line exactly as given, without quoting. Needed for
     // `cmd.exe /d /s /c "<command>"`, whose argument is not parsed by the C runtime rules.
     bool verbatim_args = false;
+    // capture() only: written to the child's standard input, which is then closed. How secrets reach a child
+    // (curl reads its config with the Authorization header from stdin) without appearing on a command line.
+    std::optional<std::string> input{};
 };
 
 struct Captured {

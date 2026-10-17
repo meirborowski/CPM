@@ -181,6 +181,8 @@ The server re-checks everything rather than trusting the client:
 
 On success: 201 `{ "name", "version", "integrity" }`. The new version appears in `index/<name>.json` straight away, as `source.url` `packages/<name>/<name>-<version>.tar.gz` with `stripComponents: 1`.
 
+A service may limit storage. It answers 507 `registry_full` when it accepts no more uploads, and 429 `upload_quota` when an account has uploaded its allowance for now. Clients show the message and do not retry.
+
 ### 7.4 Yanking and owners
 
 | Endpoint | Auth | Description |

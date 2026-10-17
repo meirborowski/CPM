@@ -466,9 +466,19 @@ std::vector<build::Dependency> install(build::Project& project, const Options& o
             throw Error(std::format("cpm-lock.json is out of date: {}", *why), "run 'cpm install' and commit the result");
     }
 
-    // 3. Resolve and lock.
+    // 3. Resolve and lock. `cpm update` takes away the lock's preferences for the packages it updates, so the
+    // solver picks the newest versions the ranges allow (and moves git branches to their current commit).
+    std::optional<lock::Lockfile> pins = old_lock;
+    if (pins && options.update_all) pins.reset();
+    for (const auto& name : options.update) {
+        if (!pins || !pins->find(name)) {
+            throw Error(std::format("\"{}\" is not installed, so it cannot be updated", name),
+                        "run 'cpm install' first, or check the name in cpm-lock.json");
+        }
+        std::erase_if(pins->packages, [&](const auto& entry) { return entry.second.name == name; });
+    }
     Sources sources(root, project.home, registries, options.offline);
-    Resolution res = resolve(m, sources, old_lock ? &*old_lock : nullptr);
+    Resolution res = resolve(m, sources, pins ? &*pins : nullptr);
     lock::Lockfile new_lock = make_lock(m, res, project, options.offline);
     if (options.frozen && lock::serialize(new_lock) != lock::serialize(*old_lock)) {
         throw Error("resolving again gives a different result than cpm-lock.json", "run 'cpm install' and commit the result");

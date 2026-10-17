@@ -54,6 +54,10 @@ public:
     // The package's index document, or nullptr if the registry has no such package. Fetched at most once.
     const RegistryPackage* package(const std::string& name);
 
+    // The raw text of index/<name>.json (nullopt if the registry has no such package), after checking the
+    // registry's config.json. For `cpm publish`, which adds a version to it.
+    std::optional<std::string> index_text(const std::string& name);
+
 private:
     std::optional<std::string> fetch(const std::string& relative);
     void check_config();

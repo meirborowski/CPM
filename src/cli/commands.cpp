@@ -61,6 +61,9 @@ const std::vector<Command>& command_table() {
         {{"remove", {"rm", "uninstall"}, "Remove dependencies", "cpm remove <name>... [options]",
           {{"offline", 0, false, "", "Use only the local caches"}, kProfileOption, kReleaseOption, kCxxOption}},
          &cmd_remove, ""},
+        {{"update", {"up"}, "Update dependencies to the newest versions their ranges allow", "cpm update [<name>...] [options]",
+          {kProfileOption, kReleaseOption, kCxxOption, {"no-build", 0, false, "", "Do not build dependency binaries"}}},
+         &cmd_update, ""},
         {{"build", {}, "Compile the package", "cpm build [options]",
           {kProfileOption, kReleaseOption, kJobsOption,
            {"tests", 0, false, "", "Also build the test executables"},
@@ -76,11 +79,11 @@ const std::vector<Command>& command_table() {
            {"no-run", 0, false, "", "Build the tests without running them"}}},
          &cmd_test, ""},
         {{"publish", {}, "Publish the package to a registry", "cpm publish [options]",
-          {{"registry", 0, true, "<name>", "Target registry"},
-           {"out", 0, true, "<dir>", "Write the archive and index entry here"},
-           {"with-binary", 0, false, "", "Also publish a prebuilt binary"},
-           {"dry-run", 0, false, "", "Show what would be published"}}},
-         nullptr, "post-MVP"},
+          {{"registry", 0, true, "<name|url>", "Target registry (default: the default registry)"},
+           {"out", 0, true, "<dir>", "Write the archive and index document here, to upload by hand"},
+           {"with-binary", 0, false, "", "Also publish a prebuilt binary (not supported yet)"},
+           {"dry-run", 0, false, "", "Check and pack, but write nothing"}}},
+         &cmd_publish, ""},
     };
     return table;
 }

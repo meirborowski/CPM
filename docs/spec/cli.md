@@ -153,17 +153,26 @@ cpm test [<filter>…] [--profile <name> | --release] [-j <n>] [--timeout <secon
 
 Builds and runs `tests/*.test.cpp` executables ([build.md §7](build.md#7-tests)). A filter selects tests whose name contains it. Several filters are ORed. `--no-run` only builds. Exits with 1 if any test fails.
 
-### `cpm publish` (*post-MVP*)
+### `cpm update`
 
 ```
-cpm publish [--registry <name>] [--out <dir>] [--with-binary] [--dry-run]
+cpm update [<name>…] [--profile <name> | --release] [--cxx <compiler>] [--no-build]
+alias: up
 ```
 
-See [registry.md §6](registry.md#6-publishing-post-mvp).
+Re-resolves without the lockfile's preferences for the named packages (direct or transitive), or for every package when no name is given, so each moves to the newest version its ranges allow. A git dependency on a branch moves to the branch's current commit. The manifest is not changed: to go beyond a range, edit it or run `cpm install <name>@<range>`. Naming a package that is not in `cpm-lock.json` is an error. Otherwise the pipeline is `cpm install`'s, including the report of every change.
+
+### `cpm publish`
+
+```
+cpm publish [--registry <name|url>] [--out <dir>] [--dry-run]
+```
+
+Packs the current package and adds its version to a registry ([registry.md §6](registry.md#6-publishing)). Without `--registry` it uses the default registry. A `file://` registry is written directly. Any other registry needs `--out <dir>`, which writes the archive and the updated index document there, to be uploaded to the registry's host. `--dry-run` runs every check and packs the archive, then lists the files and writes nothing. `--with-binary` is reserved and currently refused.
 
 ### Reserved command names (*post-MVP*)
 
-`update`, `outdated`, `info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
+`outdated`, `info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
 
 ## 4. Output
 
@@ -216,7 +225,7 @@ User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
 ```
 
 - A registry value is a URL string or an object `{ "url", "allowHttp" }`. A per-registry `token` is planned (*post-MVP*).
-- **No registry is built in** in v0.1. If a registry dependency is used and no `default` registry is configured (and `CPM_REGISTRY` is unset), CPM fails and its hint shows how to configure one.
+- **Built-in default:** a CPM build may carry a built-in default registry URL (`src/install/default_registry.hpp`). It is used when no `default` registry is configured and `CPM_REGISTRY` is unset. Current builds carry none, so a registry dependency then fails with a hint showing how to configure one.
 - Unknown keys warn. Precedence for each setting: command-line option > environment variable > `config.jsonc` > built-in default.
 
 ## 6. Environment variables

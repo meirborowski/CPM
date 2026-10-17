@@ -25,24 +25,25 @@ CPM is a single executable. Source lives in `src/<module>/`, namespace `cpm::<mo
 
 ```
  Layer 4  CLI         cli/
- Layer 3  Services    install/   build/   toolchain/   init/   run/
+ Layer 3  Services    install/   build/   toolchain/   init/   run/   publish/
  Layer 2  Model       manifest/  lock/
  Layer 1  Foundation  json/  semver/  core/
 ```
 
 | Module | Files (indicative) | Responsibility |
 |---|---|---|
-| `cli/` | `args`, `commands`, `cmd_init`, `cmd_install`, `cmd_remove`, `cmd_build`, `cmd_run`, `cmd_test` | argv parsing (subcommands, short/long flags, `--` passthrough), help text, dispatch. Commands only orchestrate services. They hold no business logic. |
+| `cli/` | `args`, `commands`, `cmd_init`, `cmd_install` (also `remove` and `update`), `cmd_build`, `cmd_run`, `cmd_test`, `cmd_publish` | argv parsing (subcommands, short/long flags, `--` passthrough), help text, dispatch. Commands only orchestrate services. They hold no business logic. |
 | `install/` | `installer`, `resolver`, `sources`, `registry`, `fetch`, `git`, `store`, `dep_builder`, `linker` | Install pipeline: resolve → fetch → ensure binaries → link → write lock. `Sources` turns specs into package metadata (path, git, registry index). Global store access and locking, sandboxed dependency builds, `cpm_modules/` linking. `build/` never includes `install/`: a build receives its dependencies through a callback (`BuildRequest::dependencies`) that the CLI fills with `install::ensure`. |
 | `init/` | `init`, `templates` | `cpm init`: name derivation, C++ identifiers, file templates, non-destructive writing, interactive questions (input injected, so they are testable). |
 | `run/` | `run` | `cpm run`: shell commands for scripts, the command for the built program, and the `CPM_*` environment. |
+| `publish/` | `publish` | `cpm publish`: file selection, the checks before packing, deterministic source archives, adding a version to a registry index ([registry.md §6](registry.md#6-publishing)). |
 | `build/` | `layout`, `plan`, `ninja_writer`, `ninja_gen`, `runner`, `dep_builder`, `tests` | Convention inference, `BuildPlan` construction, Ninja syntax and escaping, `build.ninja` generation, Ninja invocation, sandboxed dependency builds, test discovery and execution. |
 | `toolchain/` | `probe`, `driver`, `gcc_driver`, `msvc_driver` (*post-MVP*), `abi` | Compiler discovery and cached probing, the `Driver` interface that maps profiles to flags and rules, ABI fingerprinting. |
 | `manifest/` | `manifest`, `dep_spec`, `profile`, `validate` | `cpm.jsonc` model, overlays, profile defaults and inheritance, validation with `file:line:col` diagnostics. |
 | `lock/` | `lockfile` | `cpm-lock.json` model, deterministic read and write, freshness check. |
 | `json/` | `value`, `parse`, `write`, `edit` | Order-preserving JSON value with source spans, JSONC parser, deterministic writer, surgical comment-preserving text edits. |
 | `semver/` | `version`, `range` | SemVer 2.0 versions. npm-style ranges as unions of disjoint intervals. |
-| `core/` | `error`, `log`, `proc`, `fsx`, `paths`, `sha256`, `net`, `archive`, `glob`, `term` | Errors and diagnostics, logging and colour, subprocesses, filesystem (atomic writes, links, safe deletion, locks), CPM home paths, hashing, downloads (`curl`), extraction (`tar`), globbing, terminal detection. |
+| `core/` | `error`, `log`, `proc`, `fsx`, `paths`, `sha256`, `net`, `archive`, `glob`, `term` | Errors and diagnostics, logging and colour, subprocesses, filesystem (atomic writes, links, safe deletion, locks), CPM home paths, hashing, downloads (`curl`), writing deterministic `.tar.gz` archives (tar and DEFLATE implemented in CPM; extraction uses `tar`), globbing, terminal detection. |
 
 ### 3.1 External processes
 
@@ -290,4 +291,5 @@ scripts/         bootstrap.{ps1,sh} (stage 0), selfhost.{ps1,sh}
 | M2 | `cpm init`, `cpm run`: modules `init/` (templates, questions) and `run/` (script and program commands) | `cpm init -y && cpm run` works in an empty directory, and every template builds and passes its own test |
 | M3 | `cpm install` I and `cpm remove`: `semver` ranges, `json` edit, `lock`, `install/{sources,git,resolver,store,dep_builder,linker,installer}`, `toolchain/abi`, `core/filelock`, directory links | path and git dependencies (header-only and static-lib): git packages are built once per ABI in the store and shared between projects; path packages compile in the project's graph |
 | M4 | `cpm install` II: static registry (`file://`, `https://`), archive integrity, registry overlays, prebuilt binaries, `--prefer-offline`, `--no-build` | end-to-end install tests green (`install.test`, `registry.test`: real installs and builds against `file://` registries); CPM's tests use `doctest` installed by CPM |
-| M5+ | *post-MVP:* MSVC driver, PubGrub, `cpm publish`, `cpm update`, symbol isolation, Legacy Bridge, parallel fetch and dependency builds, Ninja auto-download, workspaces | — |
+| M5 | Registry tooling: `cpm publish` (`publish/`, `core/archive`), `cpm update`, a built-in default registry URL, and the `cpm-registry` repository seeded with fmt, spdlog, nlohmann-json, doctest, Catch2 and CLI11 | every seeded package publishes reproducibly, installs from a fresh home and runs its smoke program (`cpm-registry/scripts/verify.ps1`) |
+| M6+ | *post-MVP:* MSVC driver, PubGrub, `cpm publish --with-binary`, `cpm outdated`, symbol isolation, Legacy Bridge, parallel fetch and dependency builds, Ninja auto-download, workspaces | — |

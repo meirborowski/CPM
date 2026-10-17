@@ -176,7 +176,7 @@ The backtracking solver sits behind `install::Resolver`. A PubGrub implementatio
 | `cpm install <pkg…>` | Like the above, but the named packages are unlocked and resolved to the newest version allowed by the new specifier. |
 | `cpm install --frozen-lockfile` | The lock MUST be fresh ([lockfile.md §4](lockfile.md#4-freshness)). The solver does not run. Nothing is written. |
 | `cpm remove <pkg…>` | The named entries are removed from the manifest. The remaining graph is re-resolved with every surviving lock entry pinned. Packages that are no longer reachable are dropped. |
-| `cpm update [pkg…]` (*post-MVP*) | Ignores lock preferences (for the named packages, or for all of them). |
+| `cpm update [pkg…]` | Ignores lock preferences for the named packages, or for all of them, so they resolve to the newest versions their ranges allow. Git branches move to their current commit. The manifest is unchanged. |
 
 ## 5. ODR policy and symbol isolation
 

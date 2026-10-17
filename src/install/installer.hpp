@@ -20,10 +20,14 @@ struct Options {
     bool no_build = false;            // --no-build: skip building dependency binaries
     bool exact = false;               // -E: save the exact version for bare registry names
     std::string registry{};           // --registry: for the registry specs being added
+    // cpm update: resolve without the lockfile's preferences for these packages (dependencies.md §4.5).
+    std::vector<std::string> update{};
+    bool update_all = false;          // cpm update without names: for every package
 };
 
-// `cpm install` / `cpm remove` (docs/spec/cli.md): applies the manifest changes, resolves, fetches, builds and
-// links, and only then writes cpm.jsonc and cpm-lock.json. Returns the dependencies for a build.
+// `cpm install` / `cpm remove` / `cpm update` (docs/spec/cli.md): applies the manifest changes, resolves,
+// fetches, builds and links, and only then writes cpm.jsonc and cpm-lock.json. Returns the dependencies for a
+// build.
 std::vector<build::Dependency> install(build::Project& project, const Options& options, const manifest::UserConfig& config);
 
 // For `cpm build`, `cpm test` and `cpm run`: the dependencies, installing first when cpm-lock.json is

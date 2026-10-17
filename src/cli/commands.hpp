@@ -22,8 +22,10 @@ int run(const std::vector<std::string>& argv);
 int cmd_init(const ParsedArgs& args, Context& ctx);
 int cmd_install(const ParsedArgs& args, Context& ctx);
 int cmd_remove(const ParsedArgs& args, Context& ctx);
+int cmd_update(const ParsedArgs& args, Context& ctx);
 int cmd_build(const ParsedArgs& args, Context& ctx);
 int cmd_run(const ParsedArgs& args, Context& ctx);
 int cmd_test(const ParsedArgs& args, Context& ctx);
+int cmd_publish(const ParsedArgs& args, Context& ctx);
 
 }  // namespace cpm::cli

@@ -157,6 +157,33 @@ TEST(resolves_registry_versions_with_backtracking) {
     CHECK_EQ(pinned.at("b"), "1.3.0");
 }
 
+TEST(update_drops_the_lock_preference_for_named_or_all_packages) {
+    check::TempDir t;
+    fixture::Registry reg(t.path() / "registry");
+    auto config = config_for(reg);
+    auto release = [&](const std::string& name, const std::string& version) {
+        std::string manifest = std::format(R"({{ "name": "{}", "version": "{}", "type": "header-only" }})", name, version);
+        reg.publish(name, version, {{"cpm.jsonc", manifest}, {"include/x.hpp", kHeader}}, entry("header-only"));
+    };
+    for (const char* name : {"a", "b"}) release(name, "1.0.0");
+    fs::path app = t.path() / "app";
+    app_manifest(app, R"({ "a": "^1", "b": "^1" })");
+    set_env("CPM_HOME", t.path() / "home");
+    build::Project project = build::load_project(app, "debug", std::nullopt, config);
+    auto version_of = [&](const char* name) { return lock::load(app, app)->find(name)->version.to_string(); };
+
+    install::install(project, {.cwd = app}, config);
+    for (const char* name : {"a", "b"}) release(name, "1.1.0");
+    install::install(project, {.cwd = app}, config);  // a plain install keeps what the lock has
+    CHECK_EQ(version_of("a"), "1.0.0");
+    install::install(project, {.cwd = app, .update = {"a"}}, config);
+    CHECK_EQ(version_of("a"), "1.1.0");
+    CHECK_EQ(version_of("b"), "1.0.0");
+    install::install(project, {.cwd = app, .update_all = true}, config);
+    CHECK_EQ(version_of("b"), "1.1.0");
+    CHECK_THROWS(install::install(project, {.cwd = app, .update = {"zzz"}}, config), "\"zzz\" is not installed");
+}
+
 TEST(installs_from_a_registry_with_prebuilt_binaries) {
     check::TempDir t;
     const fs::path w = t.path();

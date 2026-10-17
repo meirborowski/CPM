@@ -36,6 +36,14 @@ int cmd_install(const ParsedArgs& args, Context& ctx) {
     return run_install(args, ctx, std::move(options));
 }
 
+int cmd_update(const ParsedArgs& args, Context& ctx) {
+    install::Options options;
+    options.update = args.positionals;
+    options.update_all = args.positionals.empty();
+    options.no_build = args.flag("no-build");
+    return run_install(args, ctx, std::move(options));
+}
+
 int cmd_remove(const ParsedArgs& args, Context& ctx) {
     if (args.positionals.empty()) throw UsageError("cpm remove needs the names of the packages to remove");
     install::Options options;

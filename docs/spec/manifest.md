@@ -85,7 +85,7 @@ The same manifest, together with its lockfile and registry index, is in [example
 | `defines` | string[] | `[]` | Private preprocessor definitions, `NAME` or `NAME=VALUE`. |
 | `publicDefines` | string[] | `[]` | Definitions applied to this package **and** everything that depends on it. |
 | `systemLibs` | string[] | `[]` | System libraries to link, as bare names (`pthread`, `ws2_32`, `dl`). They are propagated to dependents of static libraries. |
-| `files` | string[] | see [registry.md §6](registry.md#6-publishing-post-mvp) | Globs of files included when publishing. |
+| `files` | string[] | see [registry.md §6](registry.md#6-publishing) | Globs of files included when publishing (`cpm.jsonc` and license and readme files are always included). |
 | `scripts` | object | `{}` | Map of script name to shell command, run by `cpm run <name>` ([cli.md](cli.md#cpm-run)). |
 | `dependencies` | object | `{}` | Map of package name to specifier ([dependencies.md §1](dependencies.md#1-dependency-specifiers)). |
 | `devDependencies` | object | `{}` | Same as `dependencies`, but used only for tests and only when this package is the root. |

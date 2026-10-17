@@ -52,8 +52,10 @@ cpm run -- --flag     # build, then run the executable with arguments
 cpm run lint          # run "scripts": { "lint": "..." } from cpm.jsonc
 cpm i ../mylib        # add a local library (file:../mylib)
 cpm i git+https://github.com/me/greet.git#v1.0.0   # add a library from git
-cpm i fmt@^10         # add a package from the default registry
+cpm i fmt@^12         # add a package from the default registry
+cpm update            # move every dependency to the newest version its range allows
 cpm remove mylib
+cpm publish           # publish this library to a registry
 ```
 
 ## Registries
@@ -69,7 +71,9 @@ A registry is a base URL serving static files: `config.json` plus one `index/<na
 }
 ```
 
-or set `CPM_REGISTRY` to a base URL. `cpm publish` is not implemented yet, so for now a registry's files are written by hand.
+or set `CPM_REGISTRY` to a base URL.
+
+A registry is created with a `config.json` containing `{ "apiVersion": 1 }`. `cpm publish --registry file:///path/to/registry/` adds the current library to it: CPM packs a reproducible source archive and updates the index. For a registry CPM cannot write to, `--out <dir>` writes the two files to upload instead. The `cpm-registry` repository, with recipes and scripts for fmt, spdlog, nlohmann-json, doctest, Catch2 and CLI11, is a ready-made starting point.
 
 ## Building from source
 

@@ -114,12 +114,14 @@ Only `config.json` and `index/<name>.json` have fixed paths. Archive URLs are wh
 - **Verification:** the archive's SHA-256 is checked before it is extracted or cached. On a mismatch the file is deleted and CPM fails with `integrity check failed for fmt@10.2.1 (expected sha256:…, got sha256:…)`.
 - **Authentication** (*post-MVP*): a per-registry `token` in the configuration, sent as `Authorization: Bearer <token>` (via a curl config file passed on stdin, never on the command line).
 
-## 6. Publishing (*post-MVP*)
+## 6. Publishing
 
-`cpm publish [--registry <name>] [--dry-run]`:
+`cpm publish [--registry <name|url>] [--out <dir>] [--dry-run]` ([cli.md](cli.md#cpm-publish)):
 
-1. Validates the manifest and refuses packages with `"private": true` or versions that already exist.
-2. Packs the files selected by `files`, which defaults to `cpm.jsonc`, `include/**`, `src/**`, `LICENSE*`, `README*`, `CHANGELOG*`, into `<name>-<version>.tar.gz` deterministically: sorted entries, mtime 0, uid/gid 0, mode 0644/0755, a single top-level directory `<name>-<version>/` (so `stripComponents: 1`).
-3. Computes the integrity and builds the version entry from the manifest.
-4. For `file://` registries, writes the archive and updates `index/<name>.json` atomically, under a lock file in the registry root. For other registries, writes both files into `--out <dir>` so they can be committed or uploaded.
-5. `--with-binary` also builds the package for the local ABI and adds a `binaries` entry.
+1. **Checks.** Refuses packages with `"private": true`, executables (registries hold `static-lib`, `shared-lib` and `header-only`), versions with build metadata, and `dependencies` that are git or path specs or name another registry. A published package may depend only on packages from the same registry. `devDependencies` are never published, so they may come from anywhere.
+2. **Files.** Always `cpm.jsonc` and the top-level `LICENSE*`, `LICENCE*`, `COPYING*`, `NOTICE*` and `README*`, plus either the manifest's `files` globs or, by default, `CHANGELOG*`, `<include>/**`, `src/**`, the `sources` globs (or their defaults) and every platform's `sources`. Never `build/**`, `cpm-lock.json`, `cpm_modules/` or `.git/`. `!` globs remove matches, as in `sources`.
+3. **Archive.** `<name>-<version>.tar.gz`, written by CPM itself so it is the same on every platform: POSIX tar (pax headers for long paths) with entries sorted by path, a single top-level directory `<name>-<version>/` (so `stripComponents: 1`), parent directories included, mtime 0, uid/gid 0, no user or group names, mode 0755 for directories and 0644 for files, inside gzip with mtime 0 and OS "unknown". The same files therefore always give the same integrity.
+4. **Index.** The version entry has `source` (`packages/<name>/<name>-<version>.tar.gz`, the integrity, `stripComponents: 1`), `type`, `std` and `dependencies` from the manifest. No `manifest` overlay is needed, since the archive carries `cpm.jsonc`. It is added to `index/<name>.json`, which is created if needed and keeps versions oldest first. An existing document must be valid (§3), and a version that is already there is an error: published versions never change.
+5. **Destination.** A `file://` registry is written in place, the archive first and then the index document, both atomically, under the lock file `.cpm-publish.lock` in the registry root. For any other registry, `--out <dir>` writes the same two files under `<dir>` (built on the registry's current index), to be committed or uploaded. Without `--out` that is an error.
+6. `--dry-run` performs steps 1–4 against the registry's current index, lists the files, and writes nothing.
+7. `--with-binary` (*post-MVP*) will also build the package for the local ABI and add a `binaries` entry.

@@ -10,6 +10,7 @@
 #include "core/log.hpp"
 #include "core/paths.hpp"
 #include "core/sha256.hpp"
+#include "install/default_registry.hpp"
 #include "install/fetch.hpp"
 #include "install/store.hpp"
 #include "json/parse.hpp"
@@ -177,6 +178,11 @@ const RegistryPackage* Registry::package(const std::string& name) {
     return it->second ? &*it->second : nullptr;
 }
 
+std::optional<std::string> Registry::index_text(const std::string& name) {
+    check_config();
+    return fetch("index/" + name + ".json");
+}
+
 Registries::Registries(const manifest::UserConfig& config, fs::path home, Freshness freshness) :
     config_(config), home_(std::move(home)), freshness_(freshness) {}
 
@@ -202,6 +208,7 @@ Registry& Registries::get(const std::string& name_or_url) {
     auto it = config_.registries.find(name);
     if (it == config_.registries.end()) {
         if (name == "default") {
+            if (!kBuiltinRegistry.empty()) return make(std::string(kBuiltinRegistry), false);
             throw Error("no default registry is configured",
                         "add \"registries\": { \"default\": \"https://...\" } to $CPM_HOME/config.jsonc, or set CPM_REGISTRY");
         }

@@ -1,5 +1,6 @@
 #include <fstream>
 
+#include "install/default_registry.hpp"
 #include "install/resolver.hpp"
 #include "install/sources.hpp"
 #include "manifest/manifest.hpp"
@@ -97,7 +98,10 @@ TEST(checks_names_types_and_standards) {
     write(w / "new" / "include" / "new.hpp", "#pragma once\n");
     CHECK_THROWS(resolve(w / "app", root_manifest(w / "app", R"({ "new": "file:../new" })")), "requires c++23");
 
-    CHECK_THROWS(resolve(w / "app", root_manifest(w / "app", R"({ "fmt": "^10" })")), "no default registry is configured");
+    // With no registry configured, a registry dependency goes to the built-in default (offline here, so it fails
+    // without touching the network).
+    const std::string not_cached = std::string(install::kBuiltinRegistry) + "config.json is not cached";
+    CHECK_THROWS(resolve(w / "app", root_manifest(w / "app", R"({ "fmt": "^10" })")), not_cached.c_str());
 }
 
 TEST(detects_cycles) {

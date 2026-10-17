@@ -253,7 +253,7 @@ User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
 ```
 
 - A registry value is a URL string or an object `{ "url", "allowHttp" }`. Tokens for registry services are not part of the configuration: `cpm login` keeps them in `$CPM_HOME/credentials.json` ([registry.md §7.2](registry.md#72-accounts-and-tokens)), so `config.jsonc` can be shared safely.
-- **Built-in default:** a CPM build may carry a built-in default registry URL (`src/install/default_registry.hpp`). It is used when no `default` registry is configured and `CPM_REGISTRY` is unset. Current builds carry none, so a registry dependency then fails with a hint showing how to configure one.
+- **Built-in default:** when no `default` registry is configured and `CPM_REGISTRY` is unset, CPM uses the URL built into it (`src/install/default_registry.hpp`). Since 0.2 that is the public registry service `https://cpm-registry.com/`.
 - Unknown keys warn. Precedence for each setting: command-line option > environment variable > `config.jsonc` > built-in default.
 
 ## 6. Environment variables

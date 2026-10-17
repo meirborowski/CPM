@@ -1,119 +1,221 @@
-# CPM — C++ Package Manager
+<div align="center">
+
+# CPM
+
+**The npm-style package manager and build system for C++**
+
+One manifest. A lockfile. Dependencies built once and shared. No CMake.
 
 [![CI](https://github.com/meirborowski/CPM/actions/workflows/ci.yml/badge.svg)](https://github.com/meirborowski/CPM/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/meirborowski/CPM?sort=semver)](https://github.com/meirborowski/CPM/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Registry](https://img.shields.io/badge/registry-cpm--registry.com-2457c5)](https://cpm-registry.com)
 
-CPM brings the npm/pnpm workflow to C++: one declarative manifest (`cpm.jsonc`), a deterministic lockfile, a project-local `cpm_modules/`, a global ABI-keyed binary cache, and direct Ninja generation. No CMake.
+[Install](#install) · [Quick start](#quick-start) · [Commands](#commands) · [Registry](#the-registry) · [Docs](docs/spec/README.md)
 
-> **Status: early and experimental (v0.1).** `cpm init`, `install`, `remove`, `build`, `run` and `test` work with GCC and Clang, for registry, git and path dependencies. CI builds and tests CPM on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang). MSVC is not supported yet, and there is no public package registry yet (see [Registries](#registries)).
+</div>
 
-## Why CPM
+```sh
+cpm init -y hello && cd hello
+cpm install fmt
+cpm run
+```
 
-- **One manifest, no CMake.** A `cpm.jsonc` and a conventional layout are the whole build description. CPM writes Ninja files directly.
-- **Reproducible installs.** `cpm-lock.json` pins every version, git commit and archive hash.
-- **Build once, reuse everywhere.** Dependencies are built once per ABI fingerprint (compiler, standard, flags, platform) into a shared store and linked into each project's `cpm_modules/`.
-- **Static registries.** A registry is any directory or static HTTPS host. Archives are verified by SHA-256, and a matching prebuilt binary is used instead of building from source.
-- **No dependencies.** CPM is plain C++23 with no third-party code, and it builds itself.
+## Why CPM?
+
+- **📦 One file describes your project.** `cpm.jsonc` lists the name, the C++ standard and the dependencies. Sources are found by convention, and CPM writes Ninja files directly, so there's no CMake.
+- **🔒 Reproducible by default.** `cpm-lock.json` pins every version, git commit and archive hash. Teammates and CI get exactly what you built.
+- **⚡ Build dependencies once.** Each library is compiled once per toolchain and shared by every project on your machine.
+- **🌐 A real registry.** Install from [cpm-registry.com](https://cpm-registry.com), and publish your own libraries after a GitHub sign-in.
+- **🧰 Zero dependencies.** CPM is one self-contained binary of plain C++23, built with itself.
 
 ## Install
 
-Prebuilt binaries are attached to each [GitHub Release](https://github.com/meirborowski/CPM/releases). Unpack the archive for your platform and put `cpm` (`cpm.exe` on Windows) on your `PATH`:
+Download the binary for your platform from the [latest release](https://github.com/meirborowski/CPM/releases/latest) and put it on your `PATH`:
 
-| Platform | Archive |
-|---|---|
-| Windows x64 | `cpm-<version>-x86_64-windows.zip` (statically linked, MinGW-w64), or the bare `cpm-<version>-x86_64-windows.exe` |
-| Linux x64 | `cpm-<version>-x86_64-linux.tar.gz` (fully static, runs on any distribution) |
-| macOS, Apple silicon | `cpm-<version>-aarch64-macos.tar.gz` (macOS 13.3 or newer) |
+**Windows** (PowerShell)
 
-`SHA256SUMS` in the release lists the archives' checksums. CPM drives tools it finds on `PATH`: a C++ compiler (GCC 13+ or Clang 17+) and [Ninja](https://ninja-build.org) 1.10+ to build, plus `git`, `curl` and `tar` for git and registry dependencies.
+```powershell
+New-Item -ItemType Directory -Force $HOME\.cpm\bin | Out-Null
+Invoke-WebRequest https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-x86_64-windows.exe -OutFile $HOME\.cpm\bin\cpm.exe
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\.cpm\bin", "User")
+```
+
+**Linux** (x86-64, any distribution)
+
+```sh
+curl -fsSL https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-x86_64-linux.tar.gz | tar xz
+sudo install cpm-0.2.0-x86_64-linux/cpm /usr/local/bin/
+```
+
+**macOS** (Apple silicon, macOS 13.3+)
+
+```sh
+curl -fsSL https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-aarch64-macos.tar.gz | tar xz
+sudo install cpm-0.2.0-aarch64-macos/cpm /usr/local/bin/
+```
+
+Then check that it works with `cpm --version`. Each release has a `SHA256SUMS` file to verify the downloads against.
+
+**CPM uses the tools you already have:**
+- **A C++ compiler:** GCC 13+ or Clang 17+. On Windows, use [MSYS2](https://www.msys2.org) or [WinLibs](https://winlibs.com) MinGW-w64.
+- **[Ninja](https://ninja-build.org) 1.10+**
+- **`git`, `curl` and `tar`**, which come with Windows 10+, macOS and most Linux distributions.
 
 ## Quick start
 
+Create a project:
+
 ```sh
-cpm init -y hello     # scaffold an executable (or --lib, --shared-lib, --header-only)
+cpm init -y hello        # an executable; also --lib, --shared-lib, --header-only
 cd hello
-cpm run               # build and run it
 ```
 
-A project needs only a manifest and a conventional layout:
-
-```
-hello/
-  cpm.jsonc          { "name": "hello", "version": "0.1.0", "std": "c++23" }
-  src/main.cpp       entrypoint (src/lib.cpp makes a library)
-  src/greet.cpp      everything else in src/ is compiled and linked in
-  tests/greet.test.cpp
-```
+Add a library from the registry:
 
 ```sh
-cpm build             # debug build: build/debug/hello
-cpm build --release   # release profile
-cpm test              # builds and runs tests/*.test.cpp (exit code 0 = pass)
-cpm run -- --flag     # build, then run the executable with arguments
-cpm run lint          # run "scripts": { "lint": "..." } from cpm.jsonc
-cpm i ../mylib        # add a local library (file:../mylib)
-cpm i git+https://github.com/me/greet.git#v1.0.0   # add a library from git
-cpm i fmt@^12         # add a package from the default registry
-cpm update            # move every dependency to the newest version its range allows
-cpm remove mylib
-cpm login             # sign in to a registry service with GitHub
-cpm publish           # publish this library to the registry
+cpm install fmt
 ```
 
-## Registries
+Use it in `src/main.cpp`:
 
-A registry is a base URL serving static files: `config.json` plus one `index/<name>.json` per package ([registry protocol](docs/spec/registry.md)). It can be a local directory (`file://`) or any static HTTPS host. CPM has no built-in registry, so configure one in `$CPM_HOME/config.jsonc` (`CPM_HOME` defaults to `~/.cpm`, or `%USERPROFILE%\.cpm` on Windows):
+```cpp
+#include <fmt/format.h>
+
+int main() {
+    fmt::print("Hello from {}!\n", "CPM");
+}
+```
+
+Build and run:
+
+```sh
+cpm run
+# Hello from CPM!
+```
+
+`cpm install` added the dependency to `cpm.jsonc`. CPM edits the file in place and keeps your comments; the template `cpm init` writes explains every field. Trimmed down, it looks like this:
 
 ```jsonc
 {
-  "registries": {
-    "default": "https://example.org/cpm-registry/",
-    "local": "file:///C:/registries/local/"
+  "name": "hello",
+  "version": "0.1.0",
+  // The C++ standard this package, and everything built for it, is compiled with.
+  "std": "c++23",
+  "type": "executable",
+  "dependencies": {
+    "fmt": "^12.2.0"
   }
 }
 ```
 
-or set `CPM_REGISTRY` to a base URL.
+A project is just a manifest and a conventional layout:
 
-**Registry services** work like npm's registry. You sign in with `cpm login` (GitHub), then `cpm publish` uploads the library, and the service checks it, stores it and serves it. `cpm yank` and `cpm owner` manage what you have published. The `cpm-registry` repository is such a service, running on Cloudflare Workers.
-
-**Static registries** need no server. A directory with a `config.json` containing `{ "apiVersion": 1 }` is one. `cpm publish --registry file:///path/to/registry/` adds the current library to it: CPM packs a reproducible source archive and updates the index. For a static host CPM cannot write to, `--out <dir>` writes the two files to upload instead.
-
-## Building from source
-
-Requirements: GCC 13+ or Clang 17+, [Ninja](https://ninja-build.org) 1.10+, and `git`, all on `PATH`.
-
-CPM is built with CPM. A fresh clone needs one bootstrap compile first, a single compiler call that takes a few minutes:
-
-```sh
-pwsh scripts/bootstrap.ps1                          # Windows; sh scripts/bootstrap.sh elsewhere
-cpm_modules/.cache/bootstrap/cpm build --release    # CPM builds itself
-build/release/cpm test
+```
+hello/
+├── cpm.jsonc            the manifest
+├── cpm-lock.json        exact versions (commit it)
+├── src/main.cpp         the entry point (src/lib.cpp makes a library)
+├── src/*.cpp            everything else in src/ is compiled and linked in
+└── tests/*.test.cpp     each one is a test program for `cpm test`
 ```
 
-The result is `build/release/cpm` (`cpm.exe` on Windows). Put it on your `PATH`. CPM's tests use [doctest](https://github.com/doctest/doctest), a devDependency that CPM installs for itself from git, so the first build needs network access once. `scripts/selfhost.ps1` (or `scripts/selfhost.sh`) runs the full stage 0 → 1 → 2 self-hosting check.
+## Commands
+
+| Command | What it does |
+|---|---|
+| `cpm init [dir]` | Create a project: executable, static or shared library, or header-only |
+| `cpm install <pkg>` (`i`, `add`) | Add dependencies: `fmt`, `fmt@^12`, `../mylib`, `git+https://…#v1.0` |
+| `cpm install` | Install everything in `cpm.jsonc` exactly as `cpm-lock.json` says |
+| `cpm update [pkg…]` (`up`) | Move dependencies to the newest versions their ranges allow |
+| `cpm remove <pkg>` (`rm`) | Remove dependencies |
+| `cpm build [--release]` | Compile into `build/debug/` or `build/release/` |
+| `cpm run [script] [-- args]` | Build and run the program, or run a script from `cpm.jsonc` |
+| `cpm test [filter]` | Build and run the test programs in `tests/` |
+| `cpm login` · `cpm logout` · `cpm whoami` | Sign in to the registry with GitHub |
+| `cpm publish [--dry-run]` | Publish this library to the registry |
+| `cpm yank <pkg>@<ver>` | Hide a published version from new installs |
+| `cpm owner list\|add\|remove` | Manage who can publish a package |
+
+Run `cpm <command> --help` for every option.
+
+## The registry
+
+[**cpm-registry.com**](https://cpm-registry.com) is CPM's default registry. Search it, read package pages, and copy install commands. To start with it holds [fmt](https://cpm-registry.com/package/fmt), [spdlog](https://cpm-registry.com/package/spdlog), [nlohmann-json](https://cpm-registry.com/package/nlohmann-json), [doctest](https://cpm-registry.com/package/doctest), [Catch2](https://cpm-registry.com/package/catch2) and [CLI11](https://cpm-registry.com/package/cli11).
+
+**Publish your own library:**
+
+```sh
+cpm login                # sign in with GitHub, in the browser
+cpm publish --dry-run    # see what would be published
+cpm publish
+```
+
+CPM packs a reproducible source archive: the same files always give the same SHA-256. The registry checks it again before accepting it. Published versions never change; to withdraw a broken one, use `cpm yank`.
+
+**Run a registry of your own.** A registry can be:
+- a plain directory or static website: [static registries](docs/spec/registry.md);
+- a full service like cpm-registry.com, whose source is [meirborowski/cpm-registry](https://github.com/meirborowski/cpm-registry) and runs on Cloudflare's free tier.
+
+Point CPM at another registry in `~/.cpm/config.jsonc`:
+
+```jsonc
+{
+  "registries": {
+    "default": "https://cpm-registry.com/",
+    "work": "https://registry.example.com/"
+  }
+}
+```
+
+## How it works
+
+```mermaid
+flowchart LR
+    M["cpm.jsonc"] -->|resolve| L["cpm-lock.json"]
+    L -->|"download + verify SHA-256"| S[("~/.cpm/store")]
+    S -->|"build once per toolchain"| S
+    S -->|link| C["cpm_modules/"]
+    C --> N["Ninja"] --> B["build/debug/hello"]
+```
+
+1. **Resolve.** Every package gets exactly one version, which avoids ODR violations. The choice is saved in `cpm-lock.json`.
+2. **Fetch.** Sources go into a global store, `~/.cpm/store`, checked against the hashes in the lockfile.
+3. **Build once.** Each library is compiled once per *ABI fingerprint*: compiler, standard library, C++ standard, flags and platform. Every project with the same fingerprint reuses the result.
+4. **Link.** `cpm_modules/` in your project points into the store, and CPM writes a `build.ninja` for your code.
+
+## Configuration
+
+| Setting | Where |
+|---|---|
+| Registries, compiler, Ninja path, colours | `~/.cpm/config.jsonc` (`%USERPROFILE%\.cpm\config.jsonc` on Windows) |
+| Use another compiler | `CXX=clang++` or `--cxx clang++` |
+| Move CPM's home (store, caches, sign-in) | `CPM_HOME` |
+| Profiles, defines, per-platform settings | `cpm.jsonc` ([manifest reference](docs/spec/manifest.md)) |
+
+## Status
+
+CPM is young, at **v0.2**, and moving fast. Every change is tested on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang).
+
+**Works today:**
+- executables, plus static, shared and header-only libraries, in C++11 to C++26;
+- registry, git and path dependencies;
+- a shared build cache, with prebuilt binaries when a registry offers them;
+- publishing.
+
+**On the roadmap:**
+- MSVC support;
+- building CMake-based libraries directly (the "Legacy Bridge");
+- prebuilt binaries for registry packages;
+- `cpm search` and `cpm outdated`;
+- workspaces.
 
 ## Documentation
 
-The [specification](docs/spec/README.md) describes the manifest, dependency resolution, the lockfile, the store and ABI fingerprints, the registry protocol, the build and the CLI. [architecture.md](docs/spec/architecture.md) covers the source layout and the roadmap.
-
-## Layout
-
-| Path | Contents |
-|---|---|
-| `src/` | CPM's source: `cli/`, `init/`, `run/`, `install/`, `build/`, `toolchain/`, `lock/`, `manifest/`, `json/`, `semver/`, `core/` |
-| `tests/` | Tests on doctest, one executable per `*.test.cpp` |
-| `scripts/` | Bootstrap (stage 0) and the self-hosting check |
-| `docs/spec/` | The specification |
-| `schema/` | JSON Schemas for `cpm.jsonc`, `cpm-lock.json` and registry indexes |
-
-## Releasing
-
-[CI](.github/workflows/ci.yml) runs the self-hosting check on Windows, Linux (GCC and Clang) and macOS for every push and pull request. [Releases](.github/workflows/release.yml) are cut from tags:
-
-1. Set the new version in `cpm.jsonc` and `src/version.hpp` (a test checks that they match) and commit.
-2. Optional dry run: run the Release workflow by hand (Actions → Release → Run workflow). It builds, tests and packages every platform and uploads the archives as workflow artifacts, without publishing anything.
-3. Tag and push, for example `git tag v0.2.0` and `git push origin v0.2.0`. The workflow checks the tag against the version, then publishes a GitHub Release with the archives and `SHA256SUMS`. Tags with a hyphen (`v0.2.0-rc.1`) become prereleases.
+- [Specification](docs/spec/README.md): the manifest, dependencies, the lockfile, the store, ABI fingerprints, the build, the registry protocol and the CLI
+- [Architecture and roadmap](docs/spec/architecture.md)
+- [Contributing](CONTRIBUTING.md): building CPM from source, the tests, and releases
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) © meirborowski

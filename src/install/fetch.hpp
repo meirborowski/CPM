@@ -16,6 +16,7 @@ fs::path to_path(std::string_view file_url);             // file:///C:/x -> C:/x
 std::string from_path(const fs::path& p);                // the file:// URL of an absolute path
 std::string as_base(std::string_view u);                 // with exactly one trailing '/'
 std::string join(std::string_view base, std::string_view ref);  // ref if absolute, else base + ref (RFC 3986 subset)
+std::string encode(std::string_view text);               // percent-encodes all but RFC 3986 unreserved characters
 }  // namespace url
 
 // Lowercase hex SHA-256 of a file's bytes.

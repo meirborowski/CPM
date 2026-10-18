@@ -60,6 +60,17 @@ std::string join(std::string_view base, std::string_view ref) {
     return b + std::string(ref);
 }
 
+std::string encode(std::string_view text) {
+    std::string out;
+    for (unsigned char c : text) {
+        bool unreserved = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' ||
+                          c == '.' || c == '_' || c == '~';
+        if (unreserved) out += static_cast<char>(c);
+        else out += std::format("%{:02X}", c);
+    }
+    return out;
+}
+
 }  // namespace url
 
 std::string sha256_file(const fs::path& file) {

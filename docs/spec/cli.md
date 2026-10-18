@@ -162,6 +162,31 @@ alias: up
 
 Re-resolves without the lockfile's preferences for the named packages (direct or transitive), or for every package when no name is given, so each moves to the newest version its ranges allow. A git dependency on a branch moves to the branch's current commit. The manifest is not changed: to go beyond a range, edit it or run `cpm install <name>@<range>`. Naming a package that is not in `cpm-lock.json` is an error. Otherwise the pipeline is `cpm install`'s, including the report of every change.
 
+### `cpm outdated`
+
+```
+cpm outdated
+```
+
+Lists the direct registry dependencies (`dependencies` and `devDependencies`) that have newer versions, like `npm outdated`:
+
+| Column | Version |
+|---|---|
+| Current | the one in `cpm-lock.json` |
+| Wanted | the newest the range in `cpm.jsonc` allows, which `cpm update` moves to unless another package constrains it |
+| Latest | the newest on the registry, whatever the range |
+
+Versions are compared the way resolution orders them ([dependencies.md §4.2](dependencies.md#42-algorithm-mvp)): yanked versions never count, a release comes before any prerelease, and a prerelease is Wanted only when the range allows it ([§3.3](dependencies.md#33-prereleases)) and Latest only when the package has no release. A dependency is listed when its three versions are not all the same, with `-` for a version that does not exist: Current when the lockfile has none, Wanted when the range allows no unyanked version. When nothing is listed, CPM says that every registry dependency is up to date.
+
+```
+$ cpm outdated
+Package  Current  Wanted  Latest
+fmt      11.1.4   11.2.0  12.2.0
+spdlog   1.17.0   1.17.0  2.0.0
+```
+
+The table goes to stdout. Path and git dependencies are skipped with a note on stderr, since they have no registry versions to compare. Indexes are read like `cpm install` reads them ([registry.md §5](registry.md#5-client-behaviour)), and a dependency whose registry has no such package is an error. The exit code is 0 whether or not something is outdated.
+
 ### `cpm publish`
 
 ```
@@ -220,16 +245,31 @@ cpm owner remove <name> <github-login> [--registry <name|url>]
 
 Lists or changes the owners of a package on a registry service. Changing them needs ownership.
 
+### `cpm search`
+
+```
+cpm search <query>… [--registry <name|url>]
+```
+
+Searches a registry service ([registry.md §7.5](registry.md#75-browsing)) for packages whose name or description contains the query; several words are searched as one query. Without `--registry` it uses the default registry. Each match prints on stdout as its name, right-aligned like the verbs of status lines, its latest version and its description, in the service's order:
+
+```
+$ cpm search log
+      spdlog 1.17.0  Fast C++ logging library, compiled, using the fmt package
+```
+
+Only the first page of 20 matches is shown. When there are more, a note on stderr says how many. No match is not an error: CPM says so and exits with 0. A static registry (one whose `config.json` has no `api`) cannot be searched, so naming one is an error.
+
 ### Reserved command names (*post-MVP*)
 
-`outdated`, `info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
+`info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
 
 ## 4. Output
 
 Normative:
 
 - CPM's status messages, warnings, errors and the build tool's output go to **stderr**.
-- **stdout** is reserved for requested data: `--version`, `--help`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
+- **stdout** is reserved for requested data: `--version`, `--help`, the results of `cpm search`, `cpm outdated`, `cpm whoami` and `cpm owner list`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
 - Diagnostics follow [architecture.md §5](architecture.md#5-errors-and-diagnostics).
 
 Non-normative, recommended style (status verb right-aligned to 12 columns, bold green when colour is on):

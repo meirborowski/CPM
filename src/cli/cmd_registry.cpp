@@ -1,5 +1,6 @@
-// cpm login / logout / whoami / yank / owner: accounts and packages on a registry service
+// cpm login / logout / whoami / yank / owner / search: accounts and packages on a registry service
 // (docs/spec/registry.md §7, cli.md).
+#include <algorithm>
 #include <chrono>
 #include <format>
 #include <iostream>
@@ -126,6 +127,13 @@ std::pair<std::string, std::string> name_at_version(const std::string& spec) {
     return {spec.substr(0, at), spec.substr(at + 1)};
 }
 
+// Text from a service, made safe for a terminal: control characters (escape sequences, line breaks) become spaces.
+std::string printable(std::string_view text) {
+    std::string out(str::trim(text));
+    std::replace_if(out.begin(), out.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7f; }, ' ');
+    return out;
+}
+
 }  // namespace
 
 int cmd_login(const ParsedArgs& args, Context&) {
@@ -196,6 +204,36 @@ int cmd_owner(const ParsedArgs& args, Context&) {
         for (const auto& o : owners->as_array()) {
             if (o.is_string()) log::out(o.as_string() + "\n");
         }
+    }
+    return 0;
+}
+
+int cmd_search(const ParsedArgs& args, Context&) {
+    if (args.positionals.empty()) throw UsageError("cpm search needs something to search for", "e.g. cpm search json");
+    std::string query = str::join(args.positionals, " ");
+    std::filesystem::path home = paths::cpm_home();
+    install::Registries registries(load_config(), home, install::Freshness::Online);
+    install::Registry& registry = registries.get(args.value("registry").value_or(""));
+    service::SearchResult result = service::search(registry, query, home);
+    if (result.packages.empty()) {
+        log::info(std::format("No packages on {} match \"{}\"", registry.base(), query));
+        return 0;
+    }
+
+    // Names right-aligned like the verbs of status lines, then the latest version and the description.
+    std::size_t name_width = 12, version_width = 1;
+    for (const auto& p : result.packages) {
+        name_width = std::max(name_width, printable(p.name).size());
+        version_width = std::max(version_width, printable(p.latest).size());
+    }
+    for (const auto& p : result.packages) {
+        std::string latest = p.latest.empty() ? "-" : printable(p.latest);
+        std::string line = std::format("{:>{}} {:<{}}  {}", printable(p.name), name_width, latest, version_width, printable(p.description));
+        line.erase(line.find_last_not_of(' ') + 1);  // no description
+        log::out(line + "\n");
+    }
+    if (result.total > static_cast<std::int64_t>(result.packages.size())) {
+        log::info(std::format("{} of {} matches shown; refine the search to see others", result.packages.size(), result.total));
     }
     return 0;
 }

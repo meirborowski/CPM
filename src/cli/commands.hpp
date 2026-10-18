@@ -23,6 +23,7 @@ int cmd_init(const ParsedArgs& args, Context& ctx);
 int cmd_install(const ParsedArgs& args, Context& ctx);
 int cmd_remove(const ParsedArgs& args, Context& ctx);
 int cmd_update(const ParsedArgs& args, Context& ctx);
+int cmd_outdated(const ParsedArgs& args, Context& ctx);
 int cmd_build(const ParsedArgs& args, Context& ctx);
 int cmd_run(const ParsedArgs& args, Context& ctx);
 int cmd_test(const ParsedArgs& args, Context& ctx);
@@ -32,6 +33,7 @@ int cmd_logout(const ParsedArgs& args, Context& ctx);
 int cmd_whoami(const ParsedArgs& args, Context& ctx);
 int cmd_yank(const ParsedArgs& args, Context& ctx);
 int cmd_owner(const ParsedArgs& args, Context& ctx);
+int cmd_search(const ParsedArgs& args, Context& ctx);
 int cmd_setup(const ParsedArgs& args, Context& ctx);
 
 }  // namespace cpm::cli

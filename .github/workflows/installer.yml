@@ -64,7 +64,7 @@ jobs:
         include:
           # A bare image, like a new machine: no compiler, Ninja or git, and root, so cpm setup apt-installs them.
           - { name: Linux (Ubuntu 24.04), os: ubuntu-24.04, container: 'ubuntu:24.04' }
-          # The Command Line Tools come with the runner, so cpm setup should only download Ninja into ~/.cpm/tools.
+          # The Command Line Tools come with the runner, so cpm setup only has Ninja to download.
           - { name: macOS (arm64), os: macos-latest }
     defaults:
       run:
@@ -81,6 +81,13 @@ jobs:
           if command -v xcode-select >/dev/null; then xcode-select -p; fi
       - name: Install CPM (install.sh)
         run: curl -fsSL https://cpm-registry.com/install.sh | sh
+      # The runner has Homebrew's Ninja, which the installer's cpm setup accepts; --managed downloads Ninja anyway.
+      - name: cpm setup --managed --yes
+        if: runner.os == 'macOS'
+        run: |
+          cpm setup --managed --yes
+          cat ~/.cpm/config.jsonc
+          grep -qF "$HOME/.cpm/tools/ninja-" ~/.cpm/config.jsonc
 
       - name: cpm --version and cpm setup --check
         run: |

@@ -195,12 +195,18 @@ A service may limit storage. It answers 507 `registry_full` when it accepts no m
 
 ### 7.5 Browsing
 
-For the service's website and a future `cpm search`:
+For the service's website and `cpm search`. Clients ignore fields they do not know, so services may add more.
 
 | Endpoint | Description |
 |---|---|
-| `GET search?q=<text>&page=<n>` | `{ "packages": [{ "name", "description", "latest", "type", "license" }], "total", "page" }`, matching names and descriptions, 20 per page |
-| `GET packages/<name>` | `{ "name", "description", "license", "repository", "homepage", "readme", "latest", "owners", "versions": [{ "version", "publishedAt", "yanked", "type", "std", "dependencies", "size" }] }` |
+| `GET search?q=<text>&page=<n>` | `{ "packages": [{ "name", "description", "latest", "type", "license", "std", "downloads", "updatedAt" }], "total", "page", "perPage" }`, matching names and descriptions. Optional parameters: `perPage` (1–100, default 20); `type`, `license` and `std` filter on the latest release; `sort` is `relevance` (exact name, then names starting with the query, then the most downloaded; the default with a query), `downloads`, `updated` (the default without a query) or `name`; `facets=1` adds `"facets": { "type", "license", "std" }`, each a map from value to the number of matching packages, counted without that facet's own filter |
+| `GET packages/<name>` | `{ "name", "description", "license", "repository", "homepage", "readme", "latest", "createdAt", "updatedAt", "owners", "dependents", "downloads", "versions": [{ "version", "publishedAt", "yanked", "type", "std", "dependencies", "size" }] }`. `dependents` lists the packages whose latest release depends on this one (`[{ "name", "latest", "description" }]`). `downloads` is `{ "total", "daily": [{ "day", "count" }], "versions": { "<version>": count } }`, with `daily` covering the last 90 days (UTC), oldest first |
+| `GET users/<login>` | A publisher's profile: `{ "login", "name", "avatarUrl", "joinedAt", "packages": [...] }`, the packages as in `search` |
+| `GET stats` | `{ "packages", "versions", "downloads" }` for the whole registry |
+
+A download is one `GET` of an archive (§4); `HEAD` requests are not counted. CPM keeps archives in its store, so each machine usually downloads a version once.
+
+A service may also serve README badges: `GET /badge/<name>.svg` shows the latest version, and `GET /badge/<name>/downloads.svg` the download count. Both are always `200`, showing "not found" for an unknown package, because they appear on other sites.
 
 ## 8. Installing CPM
 

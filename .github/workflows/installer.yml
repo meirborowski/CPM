@@ -26,7 +26,7 @@ concurrency:
 
 jobs:
   registry:
-    name: Latest release on the registry
+    name: Registry
     # Not for prereleases, which the registry never serves as the latest, nor for Release dry runs and failures.
     if: >-
       (github.event_name != 'release' || !github.event.release.prerelease) &&
@@ -51,8 +51,6 @@ jobs:
           done
           echo "::error::cpm-registry.com does not serve CPM $want as the latest release after 15 minutes"
           exit 1
-      - name: Latest release
-        run: curl -fsS https://cpm-registry.com/api/v1/cpm/latest
 
   unix:
     name: ${{ matrix.name }}
@@ -106,6 +104,9 @@ jobs:
           grep -qF 'Hello from CPM!' run.txt
           cpm test
 
+      - name: What the registry answers this runner
+        if: failure()
+        run: curl -sS -D - https://cpm-registry.com/api/v1/cpm/latest | head -c 2000 || true
       - name: Upload CPM logs
         if: failure()
         uses: actions/upload-artifact@v7
@@ -180,6 +181,9 @@ jobs:
           if (-not ($out -match 'Hello from CPM!')) { throw 'cpm run did not print "Hello from CPM!"' }
           cpm test
 
+      - name: What the registry answers this runner
+        if: failure()
+        run: curl.exe -sS -D - https://cpm-registry.com/api/v1/cpm/latest | Select-Object -First 40
       - name: Upload CPM logs
         if: failure()
         uses: actions/upload-artifact@v7

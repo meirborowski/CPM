@@ -201,3 +201,61 @@ For the service's website and a future `cpm search`:
 |---|---|
 | `GET search?q=<text>&page=<n>` | `{ "packages": [{ "name", "description", "latest", "type", "license" }], "total", "page" }`, matching names and descriptions, 20 per page |
 | `GET packages/<name>` | `{ "name", "description", "license", "repository", "homepage", "readme", "latest", "owners", "versions": [{ "version", "publishedAt", "yanked", "type", "std", "dependencies", "size" }] }` |
+
+## 8. Installing CPM
+
+CPM's built-in registry service also installs CPM itself, rustup-style. Other registries need not offer any of this.
+
+### 8.1 Install scripts
+
+```
+irm https://cpm-registry.com/install.ps1 | iex                 # Windows (PowerShell 5.1 or 7)
+curl -fsSL https://cpm-registry.com/install.sh | sh             # Linux and macOS
+```
+
+Both ask the service for the latest release (§8.3) and download the binary for the machine: the bare `.exe` on Windows, the `.tar.gz` elsewhere. They check its SHA-256, and install it as `$CPM_HOME/bin/cpm` (default `~/.cpm/bin`), replacing an older one. They then put that directory on the user's `PATH`: the user `Path` variable on Windows; a line sourcing `$CPM_HOME/env` added to `~/.profile`, `~/.bashrc` and `~/.zshrc` (those that exist) elsewhere. Finally they run `cpm setup` ([cli.md](cli.md#cpm-setup)). Every step is idempotent, so running a script again updates CPM. Nothing needs administrator rights, except the Linux packages `cpm setup` installs.
+
+Options go in environment variables:
+- `CPM_HOME` says where to install. The script makes the choice last: it adds the variable to the user's environment on Windows, and to `$CPM_HOME/env` elsewhere.
+- `CPM_NO_SETUP=1` skips `cpm setup`.
+- `CPM_NO_MODIFY_PATH=1` leaves `PATH`, `CPM_HOME` and shell profiles alone.
+
+On Linux and macOS the profile line goes into `~/.profile`, created if missing, and into `~/.bash_profile`, `~/.bashrc` and `~/.zshrc` where they exist. `~/.zshrc` is also created when the login shell is zsh.
+
+### 8.2 `toolchains.json`
+
+`GET toolchains.json` at the registry's base lists the tools `cpm setup` may download, per platform:
+
+```json
+{
+  "toolchainsVersion": 1,
+  "platforms": {
+    "x86_64-windows": {
+      "compiler": {
+        "name": "WinLibs GCC 16.2.0 (MinGW-w64 14.0.0, UCRT)",
+        "version": "16.2.0",
+        "url": "https://github.com/brechtsanders/winlibs_mingw/releases/download/…/winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r2.zip",
+        "sha256": "d5dbafc4…",
+        "size": 273613326,
+        "cxx": "mingw64/bin/g++.exe"
+      },
+      "ninja": { "version": "1.13.2", "url": "…/ninja-win.zip", "sha256": "07fc8261…", "size": 291570, "exe": "ninja.exe" }
+    },
+    "x86_64-linux": { "ninja": { … } }
+  }
+}
+```
+
+- Platform keys are `<arch>-<os>`: `x86_64` or `aarch64`, and `windows`, `linux` or `macos`.
+- Each tool is a `.zip` archive. `cxx` and `exe` are paths inside it, `/`-separated.
+- `sha256` is 64 lowercase hex characters over the archive, and `size` is its length in bytes, shown before downloading.
+- A tool goes into `$CPM_HOME/tools/<tool>-<version>/` (`compiler` is stored as `winlibs`).
+
+### 8.3 The latest release
+
+| Endpoint | Description |
+|---|---|
+| `GET api/v1/cpm/latest` | `{ "version", "assets": { "<target>": { "url", "sha256" } } }`, where target is `x86_64-windows`, `x86_64-linux` or `aarch64-macos` |
+| `GET api/v1/cpm/latest/<target>` | The same for one target as one line of text, `<version> <url> <sha256>`, for `sh` |
+
+The service reads CPM's latest GitHub release and caches the answer for 10 minutes.

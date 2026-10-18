@@ -82,6 +82,7 @@ int run_program(const ParsedArgs& args, Context& ctx, const std::string& profile
     opts.forward_interrupts = true;
     // The program runs where the user is, like any command they would type themselves.
     run::Environment env = environment(plan.root, profile, plan.package, plan.package_version);
+    env.runtime_dir = run::runtime_dir(plan.toolchain.cxx, plan.toolchain.os == Os::Windows);
     return proc::run(run::program_command(exe, args.passthrough, ctx.cwd, env), opts);
 }
 

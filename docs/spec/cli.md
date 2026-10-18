@@ -170,6 +170,28 @@ cpm publish [--registry <name|url>] [--out <dir>] [--dry-run]
 
 Packs the current package and adds its version to a registry ([registry.md §6](registry.md#6-publishing)). Without `--registry` it uses the default registry. A `file://` registry is written directly. Any other registry needs `--out <dir>`, which writes the archive and the updated index document there, to be uploaded to the registry's host. `--dry-run` runs every check and packs the archive, then lists the files and writes nothing. `--with-binary` is reserved and currently refused.
 
+### `cpm setup`
+
+```
+cpm setup [--check] [--yes] [--managed]
+```
+
+Makes the machine ready to build: a C++ compiler CPM supports (GCC 13+, Clang 17+, Apple Clang 15+), Ninja 1.10+, and the helpers it drives (`git`, `curl`, `tar`). The one-line installers run it after installing CPM ([registry.md §8](registry.md#8-installing-cpm)). It first reports what it finds, then installs what is missing:
+
+| Platform | Compiler | Ninja | git and curl |
+|---|---|---|---|
+| Windows | WinLibs GCC (MinGW-w64, UCRT), unpacked into `$CPM_HOME/tools` | downloaded into `$CPM_HOME/tools` | curl comes with Windows; git is not installed, and CPM prints how to get it |
+| Linux | the distribution's packages (`apt-get`, `dnf`, `pacman`, `zypper`, `apk`, with `sudo` unless run as root), choosing the newest GCC package the distribution has | the distribution's package, or downloaded into `$CPM_HOME/tools` when there is no package manager | the distribution's packages (with `ca-certificates` on apt-get, which CPM runs without recommended packages) |
+| macOS | Apple's Command Line Tools (`xcode-select --install`, which asks in a dialog; run `cpm setup` again afterwards) | downloaded into `$CPM_HOME/tools` | come with macOS and the Command Line Tools |
+
+With `apt-get`, CPM installs a versioned GCC package such as `g++-14` only if `apt-cache policy` lists that exact package. apt reads a name no package has as a regular expression, so `g++-15` could otherwise match unrelated packages like `clang-15`.
+
+- **Pinned downloads.** What goes into `$CPM_HOME/tools` is listed, with URLs and SHA-256 checksums, in the `toolchains.json` of CPM's built-in registry ([registry.md §8.2](registry.md#82-toolchainsjson)); `CPM_TOOLCHAINS_URL` replaces that location. Every download is verified before it is unpacked, unpacked into a staging directory, and moved into place only when complete.
+- **Configuration.** When CPM installs a tool into `$CPM_HOME/tools`, or chooses a compiler that is not the first one on `PATH` (such as `g++-14`), it records it in `$CPM_HOME/config.jsonc` (`"cxx"`, `"ninja"`), editing the file in place so comments survive. Tools that are already usable are left alone.
+- **Before changing anything** CPM lists the commands it will run and the downloads with their sizes, and asks. `--yes` answers yes (for scripts and CI). `--check` only reports, and exits with 1 if anything is missing.
+- `--managed` installs the tools CPM can provide into `$CPM_HOME/tools` (on Windows the compiler and Ninja, elsewhere Ninja) even when usable ones are already installed, and points the configuration at them.
+- **Last**, CPM checks the result the way a build would use it: it probes the compiler, checks that it accepts `-std=c++23`, and runs `ninja --version`.
+
 ### `cpm login`, `cpm logout`, `cpm whoami`
 
 ```
@@ -262,6 +284,7 @@ User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
 |---|---|
 | `CPM_HOME` | CPM home directory ([store.md §1](store.md#1-cpm-home)) |
 | `CPM_REGISTRY` | URL that overrides the `default` registry |
+| `CPM_TOOLCHAINS_URL` | URL of the `toolchains.json` that `cpm setup` reads (default: the built-in registry's) |
 | `CPM_NINJA` | Path to `ninja` |
 | `CXX` | Compiler ([build.md §1.1](build.md#11-selection-order)) |
 | `CPM_KEEP_SANDBOX` | `1` keeps failed dependency-build sandboxes for inspection |

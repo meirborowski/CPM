@@ -52,6 +52,20 @@ TEST(environment_variables) {
 #endif
 }
 
+TEST(the_compilers_runtime_libraries_are_found_on_windows) {
+    // MinGW programs load libstdc++ and friends from the compiler's bin directory.
+    CHECK(run::runtime_dir("C:/w/mingw64/bin/g++.exe", true) == fs::path("C:/w/mingw64/bin"));
+    CHECK(run::runtime_dir("/usr/bin/g++", false).empty());
+
+    check::TempDir dir;
+    auto env = test_env(dir.path());
+    env.runtime_dir = dir.path() / "mingw64" / "bin";
+    std::string path = value_of(run::variables(env), "PATH");
+    std::string runtime = paths::to_native_utf8(env.runtime_dir);
+    CHECK(path.find(runtime) != std::string::npos);
+    CHECK(path.find(runtime) > path.find(value_of(run::variables(env), "CPM_BIN_DIR")));  // after the project's own programs
+}
+
 TEST(scripts_receive_arguments_exactly) {
     check::TempDir dir;
     std::vector<std::string> args = {"a b", "x&y", "p|q", "(z)", "q\"t", ""};

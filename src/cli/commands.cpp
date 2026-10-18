@@ -40,6 +40,11 @@ struct Command {
 
 const std::vector<Command>& command_table() {
     static const std::vector<Command> table = {
+        {{"setup", {}, "Install a C++ compiler and Ninja if this machine lacks them", "cpm setup [options]",
+          {{"check", 0, false, "", "Only report what is missing"},
+           {"yes", 'y', false, "", "Do not ask before installing"},
+           {"managed", 0, false, "", "Install CPM's own compiler and Ninja even if others work"}}},
+         &cmd_setup, ""},
         {{"init", {}, "Create a new package", "cpm init [<dir>] [options]",
           {{"yes", 'y', false, "", "Accept all defaults"},
            {"name", 0, true, "<name>", "Package name"},

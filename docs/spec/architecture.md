@@ -25,18 +25,19 @@ CPM is a single executable. Source lives in `src/<module>/`, namespace `cpm::<mo
 
 ```
  Layer 4  CLI         cli/
- Layer 3  Services    install/   build/   toolchain/   init/   run/   publish/
+ Layer 3  Services    install/   build/   toolchain/   init/   run/   publish/   setup/
  Layer 2  Model       manifest/  lock/
  Layer 1  Foundation  json/  semver/  core/
 ```
 
 | Module | Files (indicative) | Responsibility |
 |---|---|---|
-| `cli/` | `args`, `commands`, `cmd_init`, `cmd_install` (also `remove` and `update`), `cmd_build`, `cmd_run`, `cmd_test`, `cmd_publish`, `cmd_registry` (`login`, `logout`, `whoami`, `yank`, `owner`) | argv parsing (subcommands, short/long flags, `--` passthrough), help text, dispatch. Commands only orchestrate services. They hold no business logic. |
+| `cli/` | `args`, `commands`, `cmd_setup`, `cmd_init`, `cmd_install` (also `remove` and `update`), `cmd_build`, `cmd_run`, `cmd_test`, `cmd_publish`, `cmd_registry` (`login`, `logout`, `whoami`, `yank`, `owner`) | argv parsing (subcommands, short/long flags, `--` passthrough), help text, dispatch. Commands only orchestrate services. They hold no business logic. |
 | `install/` | `installer`, `resolver`, `sources`, `registry`, `service`, `fetch`, `git`, `store`, `dep_builder`, `linker` | Install pipeline: resolve → fetch → ensure binaries → link → write lock. `Sources` turns specs into package metadata (path, git, registry index). Global store access and locking, sandboxed dependency builds, `cpm_modules/` linking. `service` is the client of registry services: stored tokens and authenticated API requests (registry.md §7). `build/` never includes `install/`: a build receives its dependencies through a callback (`BuildRequest::dependencies`) that the CLI fills with `install::ensure`. |
 | `init/` | `init`, `templates` | `cpm init`: name derivation, C++ identifiers, file templates, non-destructive writing, interactive questions (input injected, so they are testable). |
 | `run/` | `run` | `cpm run`: shell commands for scripts, the command for the built program, and the `CPM_*` environment. |
 | `publish/` | `publish` | `cpm publish`: file selection, the checks before packing, deterministic source archives, adding a version to a registry index ([registry.md §6](registry.md#6-publishing)). |
+| `setup/` | `setup` | `cpm setup`: checks the compiler, Ninja and helpers the way a build would; reads `toolchains.json` ([registry.md §8.2](registry.md#82-toolchainsjson)); verifies and unpacks pinned tools into `$CPM_HOME/tools`; chooses and runs the Linux package manager; points `config.jsonc` at the result. The parts that decide what to install are pure functions with their own tests. |
 | `build/` | `layout`, `plan`, `ninja_writer`, `ninja_gen`, `runner`, `dep_builder`, `tests` | Convention inference, `BuildPlan` construction, Ninja syntax and escaping, `build.ninja` generation, Ninja invocation, sandboxed dependency builds, test discovery and execution. |
 | `toolchain/` | `probe`, `driver`, `gcc_driver`, `msvc_driver` (*post-MVP*), `abi` | Compiler discovery and cached probing, the `Driver` interface that maps profiles to flags and rules, ABI fingerprinting. |
 | `manifest/` | `manifest`, `dep_spec`, `profile`, `validate` | `cpm.jsonc` model, overlays, profile defaults and inheritance, validation with `file:line:col` diagnostics. |
@@ -293,4 +294,5 @@ scripts/         bootstrap.{ps1,sh} (stage 0), selfhost.{ps1,sh}
 | M4 | `cpm install` II: static registry (`file://`, `https://`), archive integrity, registry overlays, prebuilt binaries, `--prefer-offline`, `--no-build` | end-to-end install tests green (`install.test`, `registry.test`: real installs and builds against `file://` registries); CPM's tests use `doctest` installed by CPM |
 | M5 | Registry tooling: `cpm publish` (`publish/`, `core/archive`), `cpm update`, a built-in default registry URL, and the `cpm-registry` repository seeded with fmt, spdlog, nlohmann-json, doctest, Catch2 and CLI11 | every seeded package publishes reproducibly, installs from a fresh home and runs its smoke program (`cpm-registry/scripts/verify.ps1`) |
 | M6 | Registry service: the API of registry.md §7, `cpm login`/`logout`/`whoami` (GitHub device flow, `$CPM_HOME/credentials.json`), `cpm publish` to services, `cpm yank`, `cpm owner`, and the `cpm-registry` Cloudflare Worker (D1, R2, GitHub sign-in, website) | the seed packages publish through the API to a local `wrangler dev`, then install and run from an empty CPM home; the service's test suite passes |
-| M7+ | *post-MVP:* MSVC driver, PubGrub, `cpm publish --with-binary`, `cpm outdated`, `cpm search`, symbol isolation, Legacy Bridge, parallel fetch and dependency builds, Ninja auto-download, workspaces | — |
+| M7 | Installer: `cpm setup` (`setup/`), the compiler's runtime directory on `PATH` for `cpm run` and `cpm test` on Windows, and from the registry service `install.sh`, `install.ps1`, `toolchains.json` and `api/v1/cpm/latest` ([registry.md §8](registry.md#8-installing-cpm)) | from a machine with no compiler, one command installs CPM and a toolchain, and `cpm init -y hello && cpm run && cpm test` passes: Windows with WinLibs GCC, Ubuntu 24.04 with apt |
+| M8+ | *post-MVP:* MSVC driver, PubGrub, `cpm publish --with-binary`, `cpm outdated`, `cpm search`, symbol isolation, Legacy Bridge, parallel fetch and dependency builds, workspaces | — |

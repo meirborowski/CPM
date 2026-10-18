@@ -32,5 +32,6 @@ int cmd_logout(const ParsedArgs& args, Context& ctx);
 int cmd_whoami(const ParsedArgs& args, Context& ctx);
 int cmd_yank(const ParsedArgs& args, Context& ctx);
 int cmd_owner(const ParsedArgs& args, Context& ctx);
+int cmd_setup(const ParsedArgs& args, Context& ctx);
 
 }  // namespace cpm::cli

@@ -31,36 +31,43 @@ cpm run
 
 ## Install
 
-Download the binary for your platform from the [latest release](https://github.com/meirborowski/CPM/releases/latest) and put it on your `PATH`:
+One command installs CPM and, if your machine doesn't have them yet, a C++ compiler and Ninja.
 
 **Windows** (PowerShell)
 
 ```powershell
-New-Item -ItemType Directory -Force $HOME\.cpm\bin | Out-Null
-Invoke-WebRequest https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-x86_64-windows.exe -OutFile $HOME\.cpm\bin\cpm.exe
-[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$HOME\.cpm\bin", "User")
+irm https://cpm-registry.com/install.ps1 | iex
 ```
 
-**Linux** (x86-64, any distribution)
+**Linux** (x86-64) and **macOS** (Apple silicon, macOS 13.3+)
 
 ```sh
-curl -fsSL https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-x86_64-linux.tar.gz | tar xz
-sudo install cpm-0.2.0-x86_64-linux/cpm /usr/local/bin/
+curl -fsSL https://cpm-registry.com/install.sh | sh
 ```
 
-**macOS** (Apple silicon, macOS 13.3+)
+Open a new terminal afterwards so `cpm` is on your `PATH`, then try the [quick start](#quick-start).
 
-```sh
-curl -fsSL https://github.com/meirborowski/CPM/releases/download/v0.2.0/cpm-0.2.0-aarch64-macos.tar.gz | tar xz
-sudo install cpm-0.2.0-aarch64-macos/cpm /usr/local/bin/
-```
+The script puts `cpm` in `~/.cpm/bin` after checking its SHA-256 against the release, then runs **`cpm setup`**. That command looks for what CPM needs and says what it will change before it changes anything:
 
-Then check that it works with `cpm --version`. Each release has a `SHA256SUMS` file to verify the downloads against.
+| Platform | What `cpm setup` installs when it's missing |
+|---|---|
+| Windows | [WinLibs](https://winlibs.com) GCC (MinGW-w64, UCRT) and [Ninja](https://ninja-build.org), into `~/.cpm/tools`. Nothing outside your user folder changes. |
+| Linux | `g++` and `ninja-build` from your distribution, with `sudo`: apt, dnf, pacman, zypper or apk |
+| macOS | Apple's Command Line Tools (Clang), plus Ninja into `~/.cpm/tools` |
 
-**CPM uses the tools you already have:**
-- **A C++ compiler:** GCC 13+ or Clang 17+. On Windows, use [MSYS2](https://www.msys2.org) or [WinLibs](https://winlibs.com) MinGW-w64.
-- **[Ninja](https://ninja-build.org) 1.10+**
-- **`git`, `curl` and `tar`**, which come with Windows 10+, macOS and most Linux distributions.
+Run `cpm setup --check` at any time to see what's there without changing anything. If you already have GCC 13+ or Clang 17+, Ninja 1.10+ and `git`, CPM uses those and installs nothing.
+
+<details>
+<summary>Install by hand</summary>
+
+Download the binary for your platform from the [latest release](https://github.com/meirborowski/CPM/releases/latest), check it against `SHA256SUMS`, put it on your `PATH`, and run `cpm setup`.
+
+The install scripts accept these environment variables:
+- `CPM_HOME` installs somewhere other than `~/.cpm`.
+- `CPM_NO_SETUP=1` skips `cpm setup`.
+- `CPM_NO_MODIFY_PATH=1` leaves your `PATH`, `CPM_HOME` and shell profiles alone.
+
+</details>
 
 ## Quick start
 
@@ -124,6 +131,7 @@ hello/
 
 | Command | What it does |
 |---|---|
+| `cpm setup [--check]` | Install a C++ compiler and Ninja if they're missing, or just report what's there |
 | `cpm init [dir]` | Create a project: executable, static or shared library, or header-only |
 | `cpm install <pkg>` (`i`, `add`) | Add dependencies: `fmt`, `fmt@^12`, `../mylib`, `git+https://…#v1.0` |
 | `cpm install` | Install everything in `cpm.jsonc` exactly as `cpm-lock.json` says |

@@ -1,0 +1,191 @@
+# Runs the one-line installers (docs/spec/registry.md §8) against https://cpm-registry.com on fresh runners, then
+# builds a project that uses a registry package. This catches breakage in install.sh, install.ps1, `cpm setup`,
+# toolchains.json and the latest-release endpoint, none of which the self-hosting CI exercises.
+name: Installer
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'  # Mondays
+  release:
+    types: [published]
+  # release.yml publishes with GITHUB_TOKEN, whose events start no workflows, so `release` fires only for releases
+  # published by hand; this catches the ones release.yml publishes.
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  pull_request:
+    paths: ['.github/workflows/installer.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: installer-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  registry:
+    name: Latest release on the registry
+    # Not for prereleases, which the registry never serves as the latest, nor for Release dry runs and failures.
+    if: >-
+      (github.event_name != 'release' || !github.event.release.prerelease) &&
+      (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' && !contains(github.event.workflow_run.head_branch, '-')))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Wait until the registry serves the new release
+        if: github.event_name == 'release' || github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name || github.event.workflow_run.head_branch }}
+        run: |
+          want=${TAG#v}
+          # The registry caches the latest release for 10 minutes (docs/spec/registry.md §8.3).
+          for _ in $(seq 30); do
+            have=$(curl -fsS https://cpm-registry.com/api/v1/cpm/latest | jq -r .version) || have=
+            echo "registry: ${have:-no answer}, release: $want"
+            [ "$have" = "$want" ] && exit 0
+            sleep 30
+          done
+          echo "::error::cpm-registry.com does not serve CPM $want as the latest release after 15 minutes"
+          exit 1
+      - name: Latest release
+        run: curl -fsS https://cpm-registry.com/api/v1/cpm/latest
+
+  unix:
+    name: ${{ matrix.name }}
+    needs: registry
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.container }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # A bare image, like a new machine: no compiler, Ninja or git, and root, so cpm setup apt-installs them.
+          - { name: Linux (Ubuntu 24.04), os: ubuntu-24.04, container: 'ubuntu:24.04' }
+          # The Command Line Tools come with the runner, so cpm setup should only download Ninja into ~/.cpm/tools.
+          - { name: macOS (arm64), os: macos-latest }
+    defaults:
+      run:
+        # A login shell, like a new terminal: later steps find cpm only through the line install.sh adds to the
+        # profile.
+        shell: bash -elo pipefail {0}
+    steps:
+      - name: Install curl
+        if: runner.os == 'Linux'
+        run: apt-get update && apt-get install -y curl
+      - name: What the runner has
+        run: |
+          for tool in c++ g++ clang++ ninja git; do echo "$tool: $(command -v "$tool" || echo none)"; done
+          if command -v xcode-select >/dev/null; then xcode-select -p; fi
+      - name: Install CPM (install.sh)
+        run: curl -fsSL https://cpm-registry.com/install.sh | sh
+
+      - name: cpm --version and cpm setup --check
+        run: |
+          command -v cpm
+          cpm --version
+          cpm setup --check
+      - name: Create a project that uses fmt
+        run: |
+          cpm init -y hello
+          cd hello
+          cpm install fmt
+          cat > src/main.cpp <<'EOF'
+          #include <fmt/format.h>
+
+          int main() { fmt::print("Hello from {}!\n", "CPM"); }
+          EOF
+      - name: cpm run and cpm test
+        working-directory: hello
+        run: |
+          cpm run | tee run.txt
+          grep -qF 'Hello from CPM!' run.txt
+          cpm test
+
+      - name: Upload CPM logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ runner.os }}
+          path: |
+            ~/.cpm/logs
+            ~/.cpm/config.jsonc
+          if-no-files-found: ignore
+
+  windows:
+    name: Windows
+    needs: registry
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # WinLibs GCC reaches its headers through paths about 150 characters below its folder, and Windows limits
+      # paths to 260.
+      CPM_HOME: C:\cpm
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: What the runner has
+        run: Get-Command g++, clang++, ninja, git -ErrorAction SilentlyContinue | Format-Table Name, Version, Source
+      - name: Install CPM (install.ps1, in Windows PowerShell 5.1)
+        shell: powershell
+        run: irm https://cpm-registry.com/install.ps1 | iex
+      - name: Check the user environment install.ps1 set
+        run: |
+          $userPath = [Environment]::GetEnvironmentVariable('Path', 'User') -split ';'
+          if ($userPath -notcontains "$env:CPM_HOME\bin") { throw "The user Path lacks $env:CPM_HOME\bin: $userPath" }
+          $userHome = [Environment]::GetEnvironmentVariable('CPM_HOME', 'User')
+          if ($userHome -ne $env:CPM_HOME) { throw "The user CPM_HOME is '$userHome', not $env:CPM_HOME" }
+          # A new terminal reads the user Path; later steps get it only through GITHUB_PATH.
+          Add-Content $env:GITHUB_PATH "$env:CPM_HOME\bin"
+
+      # The runner's own compilers satisfy the installer's cpm setup; --managed downloads WinLibs GCC and Ninja anyway.
+      - name: cpm setup --managed --yes
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cpm setup --managed --yes
+          Get-Content "$env:CPM_HOME\config.jsonc"
+          foreach ($tool in 'winlibs-', 'ninja-') {
+            if (-not (Select-String -Quiet -SimpleMatch $tool "$env:CPM_HOME\config.jsonc")) {
+              throw "config.jsonc does not point at $tool* in $env:CPM_HOME\tools"
+            }
+          }
+      - name: cpm --version and cpm setup --check
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          (Get-Command cpm).Source
+          cpm --version
+          cpm setup --check
+      - name: Create a project that uses fmt
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          cpm init -y hello
+          Set-Location hello
+          cpm install fmt
+          @'
+          #include <fmt/format.h>
+
+          int main() { fmt::print("Hello from {}!\n", "CPM"); }
+          '@ | Set-Content src/main.cpp
+      - name: cpm run and cpm test
+        working-directory: hello
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          $out = cpm run
+          $out
+          if (-not ($out -match 'Hello from CPM!')) { throw 'cpm run did not print "Hello from CPM!"' }
+          cpm test
+
+      - name: Upload CPM logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: logs-${{ runner.os }}
+          path: |
+            C:\cpm\logs
+            C:\cpm\config.jsonc
+          if-no-files-found: ignore

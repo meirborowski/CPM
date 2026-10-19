@@ -1,15 +1,21 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <initializer_list>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "json/value.hpp"
 
-// The client side of a registry service (docs/spec/registry.md §7): stored tokens and authenticated requests.
+namespace cpm::install {
+class Registry;
+}
+
+// The client side of a registry service (docs/spec/registry.md §7): stored tokens, authenticated requests and search.
 namespace cpm::install::service {
 
 namespace fs = std::filesystem;
@@ -43,5 +49,21 @@ Response send(const Request& request, const fs::path& home);
 // The parsed JSON body of a response with one of the `ok` statuses; otherwise throws cpm::Error carrying the
 // service's message (registry.md §7.1).
 json::Value expect(const Response& response, std::initializer_list<int> ok = {200, 201});
+
+struct SearchHit {
+    std::string name, description, latest, type, license;
+};
+
+struct SearchResult {
+    std::vector<SearchHit> packages;  // the first page, in the service's order
+    std::int64_t total = 0;           // all matches, on every page
+};
+
+// `cpm search`: GET search?q=<query> on the registry's service (registry.md §7.5). Throws cpm::Error for a static
+// registry, which has no search.
+SearchResult search(Registry& registry, std::string_view query, const fs::path& home);
+
+// The body of a search response; throws cpm::Error when it is not one.
+SearchResult parse_search(const json::Value& body);
 
 }  // namespace cpm::install::service

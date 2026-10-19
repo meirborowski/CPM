@@ -10,6 +10,7 @@
 #include "core/proc.hpp"
 #include "core/strings.hpp"
 #include "install/fetch.hpp"
+#include "install/registry.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
 
@@ -168,6 +169,35 @@ json::Value expect(const Response& response, std::initializer_list<int> ok) {
     if (const json::Value* m = body.find("message"); m && m->is_string()) message = m->as_string();
     if (response.status == 401) throw Error(message, "run cpm login");
     throw Error(message);
+}
+
+SearchResult parse_search(const json::Value& body) {
+    const json::Value* packages = body.find("packages");
+    if (!packages || !packages->is_array()) throw Error("the registry's search answer has no \"packages\" list");
+    auto text = [](const json::Value& v, std::string_view key) {
+        const json::Value* m = v.find(key);
+        return m && m->is_string() ? m->as_string() : std::string();
+    };
+    SearchResult result;
+    for (const auto& p : packages->as_array()) {
+        if (!p.is_object() || text(p, "name").empty()) continue;
+        result.packages.push_back({text(p, "name"), text(p, "description"), text(p, "latest"), text(p, "type"), text(p, "license")});
+    }
+    const json::Value* total = body.find("total");
+    result.total = total && total->is_int() ? total->as_int() : 0;
+    result.total = std::max<std::int64_t>(result.total, static_cast<std::int64_t>(result.packages.size()));
+    return result;
+}
+
+SearchResult search(Registry& registry, std::string_view query, const fs::path& home) {
+    const auto& api = registry.api();
+    if (!api) {
+        throw Error(std::format("{} is a static registry, which cannot be searched", registry.base()),
+                    "search needs a registry service (a registry whose config.json names an \"api\"), such as the default "
+                    "registry; static registries list their packages in index/");
+    }
+    Response r = send({.url = *api + "search?q=" + url::encode(query), .allow_http = registry.allow_http()}, home);
+    return parse_search(expect(r, {200}));
 }
 
 }  // namespace cpm::install::service

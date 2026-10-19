@@ -195,7 +195,7 @@ A service may limit storage. It answers 507 `registry_full` when it accepts no m
 
 ### 7.5 Browsing
 
-For the service's website and `cpm search`. Clients ignore fields they do not know, so services may add more.
+For the service's website and `cpm search` ([cli.md](cli.md#cpm-search)). Clients ignore fields they do not know, so services may add more.
 
 | Endpoint | Description |
 |---|---|

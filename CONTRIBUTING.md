@@ -39,6 +39,8 @@ CPM's tests use [doctest](https://github.com/doctest/doctest), a devDependency t
 
 [CI](.github/workflows/ci.yml) runs the self-hosting check on Windows, Linux (GCC and Clang) and macOS for every push and pull request. [Releases](.github/workflows/release.yml) are cut from tags:
 
-1. Set the new version in `cpm.jsonc` and `src/version.hpp` (a test checks that they match), update the download links in `README.md`, and commit.
-2. Optional dry run: run the Release workflow by hand (Actions → Release → Run workflow). It builds, tests and packages every platform and uploads the archives as workflow artifacts, without publishing anything.
-3. Tag and push, for example `git tag v0.3.0` and `git push origin v0.3.0`. The workflow checks the tag against the version, then publishes a GitHub Release with the archives, the bare Windows executable and `SHA256SUMS`. Tags with a hyphen (`v0.3.0-rc.1`) become prereleases.
+1. Write the release notes: a `## <version> — <date>` section at the top of [CHANGELOG.md](CHANGELOG.md), for people who use CPM. Start with one line on what the release is about, then what is new, what changed and what is fixed, each in terms of what users can now do. Leave out internal refactors. `sh scripts/release-notes.sh <version> --install` shows the notes as they will be published.
+2. Set the new version in `cpm.jsonc` and `src/version.hpp` (a test checks that they match), and commit.
+3. Optional dry run: run the Release workflow by hand (Actions → Release → Run workflow). It builds, tests and packages every platform and uploads the archives as workflow artifacts, without publishing anything.
+4. Tag and push, for example `git tag v0.4.0` and `git push origin v0.4.0`. The workflow checks the tag against the version and that CHANGELOG.md has its notes. It then publishes a GitHub Release with the notes, how to install, the archives, the bare Windows executable and `SHA256SUMS`. Tags with a hyphen (`v0.4.0-rc.1`) become prereleases.
+5. The [Installer](.github/workflows/installer.yml) workflow then runs the one-line installers on fresh Linux, macOS and Windows machines, once cpm-registry.com serves the new version.

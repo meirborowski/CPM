@@ -226,6 +226,7 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 
 - [Specification](docs/spec/README.md): the manifest, dependencies, the lockfile, the store, ABI fingerprints, the build, the registry protocol and the CLI
 - [Architecture and roadmap](docs/spec/architecture.md)
+- [Changelog](CHANGELOG.md): what each release changed
 - [Contributing](CONTRIBUTING.md): building CPM from source, the tests, and releases
 
 ## License

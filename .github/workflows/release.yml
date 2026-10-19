@@ -1,4 +1,5 @@
-# Builds release binaries and publishes them as a GitHub Release when a version tag (v1.2.3) is pushed.
+# Builds release binaries and publishes them as a GitHub Release when a version tag (v1.2.3) is pushed, with the
+# version's section of CHANGELOG.md as its notes (a version without one is not released).
 # Running it by hand (workflow_dispatch) builds and uploads the archives as workflow artifacts only:
 # a dry run of the release that publishes nothing.
 name: Release
@@ -31,6 +32,9 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match version $manifest"; exit 1
           fi
           echo "version=$manifest" >> "$GITHUB_OUTPUT"
+      - name: Check that CHANGELOG.md has this version's release notes
+        run: |
+          sh scripts/release-notes.sh "${{ steps.version.outputs.version }}" > /dev/null
 
   build:
     needs: version
@@ -130,6 +134,9 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0  # the tags, for the "Full changelog" link
       - uses: actions/download-artifact@v8
         with:
           path: dist
@@ -137,6 +144,10 @@ jobs:
       - name: Checksums
         working-directory: dist
         run: sha256sum cpm-* | tee SHA256SUMS
+      - name: Release notes
+        run: |
+          sh scripts/release-notes.sh "${{ needs.version.outputs.version }}" --install > notes.md
+          cat notes.md
       - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -144,4 +155,4 @@ jobs:
           prerelease=
           case "$GITHUB_REF_NAME" in *-*) prerelease=--prerelease ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
-            --title "CPM ${{ needs.version.outputs.version }}" --generate-notes $prerelease
+            --title "CPM ${{ needs.version.outputs.version }}" --notes-file notes.md $prerelease

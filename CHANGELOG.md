@@ -1,0 +1,65 @@
+# Changelog
+
+Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
+
+## 0.4.0 — 2026-10-19
+
+Find packages and stale dependencies without leaving the terminal.
+
+### New
+
+- **`cpm search <query>`** searches the registry by name and description, and lists each match with its latest version and description. `--registry` searches another registry service. A static registry, which has no search, says so.
+- **`cpm outdated`** lists the registry dependencies whose locked version (Current), the newest version their range allows (Wanted) and the newest version (Latest) differ, like `npm outdated`. Yanked versions never count, and releases come before prereleases. Path and git dependencies are skipped with a note.
+- **CPM has a logo**: a "c" with the "++" of C++. It's on the README, cpm-registry.com and the favicon.
+
+### Also
+
+- The one-line installers are now tested on fresh Linux, macOS and Windows machines every week and after each release. They install CPM, set up a compiler, then build and test a project that uses a registry package. This is the first time `cpm setup` runs on macOS in CI.
+- The registry protocol ([registry.md §7.5](docs/spec/registry.md#75-browsing)) documents what a registry service offers for browsing: search filters, sorting and facets, download statistics, dependents, publisher profiles, totals and README badges. Clients ignore what they don't use.
+
+## 0.3.0 — 2026-10-18
+
+One command takes a machine from nothing to building C++.
+
+### New
+
+- **One-line installers.** `curl -fsSL https://cpm-registry.com/install.sh | sh` on Linux and macOS, and `irm https://cpm-registry.com/install.ps1 | iex` in PowerShell. They download the latest CPM, check its SHA-256, put it on your `PATH`, and run `cpm setup`. Running one again updates CPM. `CPM_HOME`, `CPM_NO_SETUP=1` and `CPM_NO_MODIFY_PATH=1` change what they do.
+- **`cpm setup`** finds the compiler, Ninja, git, curl and tar, says what it will change, asks, and installs what is missing:
+  - Windows: WinLibs GCC and Ninja, into `~/.cpm/tools`, with nothing outside your user folder;
+  - Linux: the distribution's packages through apt-get, dnf, pacman, zypper or apk, choosing the newest GCC the distribution has;
+  - macOS: Apple's Command Line Tools, and Ninja into `~/.cpm/tools`.
+
+  Downloads are pinned with checksums. `--check` only reports, `--yes` doesn't ask, and `--managed` installs CPM's own tools even when others work.
+
+### Fixed
+
+- On Windows, `cpm run` and `cpm test` put the compiler's folder on `PATH`. Programs built with a compiler that isn't on `PATH`, such as WinLibs or MSYS2 GCC, now find libstdc++ and the other runtime DLLs.
+
+## 0.2.0 — 2026-10-17
+
+A public registry, and publishing to it.
+
+### New
+
+- **cpm-registry.com is the default registry.** `cpm install fmt` works with no configuration. The registry starts with fmt, spdlog, nlohmann-json, doctest, Catch2 and CLI11, and its website lists every package.
+- **`cpm publish`** packs a library into an archive that is byte-identical on every platform, checks it, and publishes it to a registry service or a static registry. `--dry-run` checks and packs without publishing; `--out` writes the files to upload elsewhere.
+- **Accounts.** `cpm login` signs in with GitHub, and `cpm login --with-token` takes an API token for CI. `cpm logout` and `cpm whoami` complete the set. Tokens are kept in `$CPM_HOME/credentials.json`, never in the configuration.
+- **`cpm yank`** hides a published version from new installs (`--undo` brings it back). **`cpm owner`** lists, adds and removes who may publish a package.
+- **`cpm update`** (alias `up`) moves dependencies to the newest versions their ranges allow, and git branches to their newest commit.
+
+### Fixed
+
+- A git mirror or store entry damaged from outside CPM, for example by a cleaner of temporary files, is now rebuilt instead of failing the install or the build.
+- Releases include the bare Windows executable as well as the zip.
+
+## 0.1.0 — 2026-10-16
+
+The first release: the npm workflow, for C++.
+
+- **One manifest, a lockfile.** `cpm.jsonc` describes the project, and `cpm-lock.json` pins every version, git commit and archive hash. CPM edits the manifest in place and keeps its comments.
+- **`cpm init`** makes an executable, a static or shared library, or a header-only library, with a test. **`cpm build`**, **`cpm run`** and **`cpm test`** build with Ninja directly: no CMake.
+- **`cpm install`** and **`cpm remove`** handle registry, git and path dependencies. Every archive is checked against its SHA-256. `--offline`, `--prefer-offline` and `--no-build` control the network and building.
+- **Built once, shared.** Each dependency is built once per ABI fingerprint into a global store, `~/.cpm`, and linked into each project's `cpm_modules/`. A registry's prebuilt binaries are used when they match.
+- **GCC and Clang** on Windows (MinGW-w64), Linux and macOS, with profiles, sanitizers and per-platform settings.
+
+CPM is plain C++23 with no third-party code, and it builds itself. Binaries are for Windows (x86-64), Linux (x86-64, statically linked, any distribution) and macOS (Apple silicon).

@@ -113,7 +113,8 @@ jobs:
 
       - name: What the registry answers this runner
         if: failure()
-        run: curl -sS -D - https://cpm-registry.com/api/v1/cpm/latest | head -c 2000 || true
+        # The headers say who refused (cf-mitigated, cf-ray for Cloudflare's Security Events) without the page.
+        run: curl -sS -D - -o /dev/null https://cpm-registry.com/api/v1/cpm/latest
       - name: Upload CPM logs
         if: failure()
         uses: actions/upload-artifact@v7
@@ -190,7 +191,7 @@ jobs:
 
       - name: What the registry answers this runner
         if: failure()
-        run: curl.exe -sS -D - https://cpm-registry.com/api/v1/cpm/latest | Select-Object -First 40
+        run: curl.exe -sS -D - -o NUL https://cpm-registry.com/api/v1/cpm/latest
       - name: Upload CPM logs
         if: failure()
         uses: actions/upload-artifact@v7

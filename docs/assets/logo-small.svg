@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="CPM">
+  <!-- CPM's logo drawn for 16-32 px (favicons): heavier strokes and plus signs than logo.svg. -->
+  <rect width="100" height="100" rx="22" fill="#2457c5"/>
+  <path d="M58.56 34.44A22 22 0 1 0 58.56 65.56" fill="none" stroke="#fff" stroke-width="15" stroke-linecap="round"/>
+  <path d="M71.5 37.5h15v6h-15zM76 33h6v15h-6zM71.5 56.5h15v6h-15zM76 52h6v15h-6z" fill="#fff"/>
+</svg>

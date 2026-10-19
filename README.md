@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logo.svg" alt="" width="96" height="96">
+
 # CPM
 
 **The npm-style package manager and build system for C++**

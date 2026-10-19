@@ -207,13 +207,13 @@ flowchart LR
 
 ## Status
 
-CPM is young, at **v0.3**, and moving fast. Every change is tested on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang).
+CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang), and the one-line installers are tested on fresh machines weekly and after each release.
 
 **Works today:**
 - executables, plus static, shared and header-only libraries, in C++11 to C++26;
 - registry, git and path dependencies;
 - a shared build cache, with prebuilt binaries when a registry offers them;
-- publishing;
+- publishing, searching the registry, and finding outdated dependencies;
 - a one-command install that also sets up a compiler and Ninja.
 
 **On the roadmap:**

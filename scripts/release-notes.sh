@@ -19,10 +19,12 @@ if [ -z "$(printf '%s' "$notes" | tr -d '[:space:]')" ]; then
   echo "error: CHANGELOG.md has no release notes for $version; add a \"## $version — <date>\" section" >&2
   exit 1
 fi
-printf '%s\n' "$notes" | sed '/./,$!d'
+repo="${GITHUB_REPOSITORY:-meirborowski/CPM}"
+# Links to files in the repository ("docs/spec/registry.md#75-browsing") point to them at this release's tag, since
+# a release page would resolve them against its own URL.
+printf '%s\n' "$notes" | sed '/./,$!d' | sed -E "s#\]\(([^)/\#:][^):]*)\)#](https://github.com/$repo/blob/v$version/\1)#g"
 
 [ "${2:-}" = --install ] || exit 0
-repo="${GITHUB_REPOSITORY:-meirborowski/CPM}"
 cat <<'EOF'
 
 ## Install

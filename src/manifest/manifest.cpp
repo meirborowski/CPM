@@ -45,11 +45,11 @@ bool valid_package_name(std::string_view name) {
 
 namespace {
 
-constexpr std::array<std::string_view, 23> kTopLevelKeys = {
+constexpr std::array<std::string_view, 24> kTopLevelKeys = {
     "name",    "version",       "description",  "license",    "authors",  "repository",   "homepage",
     "keywords", "private",      "std",          "type",       "main",     "sources",      "include",
     "defines", "publicDefines", "systemLibs",   "files",      "scripts",  "dependencies", "devDependencies",
-    "profiles", "platforms"};
+    "overrides", "profiles",    "platforms"};
 
 constexpr std::array<std::string_view, 6> kPlatformKeys = {"defines",  "publicDefines", "systemLibs",
                                                             "sources",  "cxxflags",      "ldflags"};
@@ -320,6 +320,30 @@ Manifest parse(std::string text, const fs::path& file, std::string display) {
         }
     }
 
+    // overrides (dependencies.md §4.6): "name" or "dependent>name", each to a version range
+    if (const json::Value* overrides = c.object(root, "overrides")) {
+        for (const auto& o : overrides->as_object()) {
+            auto arrow = o.key.find('>');
+            std::string name = arrow == std::string::npos ? o.key : o.key.substr(arrow + 1);
+            std::string dependent = arrow == std::string::npos ? "" : o.key.substr(0, arrow);
+            if (!valid_package_name(name) || (arrow != std::string::npos && (!valid_package_name(dependent) || dependent == name))) {
+                c.error(o.key_span, std::format("invalid override \"{}\"", o.key),
+                        "use a package name such as \"fmt\", or <dependent>><name> such as \"spdlog>fmt\"");
+                continue;
+            }
+            if (!o.value.is_string()) {
+                c.type_error(o.value, std::format("override \"{}\"", o.key), "a version range");
+                continue;
+            }
+            if (!semver::Range::parse(o.value.as_string())) {
+                c.error(o.value.span(), std::format("invalid version range \"{}\"", o.value.as_string()),
+                        "use a range such as \"^10.2.0\", \"~1.4\" or \">=2 <3\"");
+                continue;
+            }
+            m.overrides[o.key] = o.value.as_string();
+        }
+    }
+
     // profiles
     m.profiles = resolve_profiles(c.object(root, "profiles"), c);
 
@@ -390,6 +414,19 @@ Manifest parse_package(const std::optional<std::string>& text, const std::option
     if (!root.find("name")) root.set("name", name);
     if (!root.find("version")) root.set("version", fallback_version);
     return check_name(parse(json::write(root), file, display + " (with the manifest overlay)"));
+}
+
+const std::pair<const std::string, std::string>* find_override(const std::map<std::string, std::string>& overrides,
+                                                               std::string_view dependent, std::string_view name) {
+    if (auto it = overrides.find(std::format("{}>{}", dependent, name)); it != overrides.end()) return &*it;
+    if (auto it = overrides.find(std::string(name)); it != overrides.end()) return &*it;
+    return nullptr;
+}
+
+const std::pair<const std::string, std::string>* override_for(const Manifest& project, std::string_view dependent,
+                                                              const DependencySpec& requirement) {
+    if (requirement.kind != DependencySpec::Kind::Registry) return nullptr;
+    return find_override(project.overrides, dependent, requirement.name);
 }
 
 PlatformOverrides effective_platform(const Manifest& m, Os os) {

@@ -110,4 +110,39 @@ inline Value entry(const std::string& type, const std::string& std = "c++17",
     return e;
 }
 
+// A file:// registry whose index documents are written directly: resolution reads only the index, so the archives
+// they name don't need to exist. Call save() once every version is added.
+class Index {
+public:
+    explicit Index(fs::path dir) : reg_(std::move(dir)) {}
+
+    Index& add(const std::string& name, const std::string& version, std::map<std::string, std::string> deps = {},
+               bool yanked = false) {
+        Value e = entry("header-only", "c++17", std::move(deps));
+        Value source = Value::object();
+        source.set("url", "packages/" + name + "-" + version + ".tar.gz");
+        source.set("integrity", "sha256:" + std::string(64, '0'));
+        e.set("source", std::move(source));
+        if (yanked) e.set("yanked", true);
+        auto [it, inserted] = docs_.try_emplace(name, Value::object());
+        if (inserted) {
+            it->second.set("name", name);
+            it->second.set("versions", Value::object());
+        }
+        it->second.find("versions")->set(version, std::move(e));
+        return *this;
+    }
+
+    void save() const {
+        for (const auto& [name, doc] : docs_) reg_.save(name, doc);
+    }
+
+    std::string url() const { return reg_.url(); }
+    std::string base() const { return cpm::install::url::as_base(reg_.url()); }
+
+private:
+    Registry reg_;
+    std::map<std::string, Value> docs_;
+};
+
 }  // namespace fixture

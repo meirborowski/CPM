@@ -170,7 +170,7 @@ error: the project's dependencies can't be resolved
 ### 4.4 Guarantees
 
 - Resolution finds a solution whenever one exists. It fails only when none does, and then the explanation of §4.3 is a proof of that.
-- The project's own requirements are never changed or ignored. Overrides (*0.4.3*) will be the explicit way to do that.
+- Requirements are never changed or ignored behind the project's back. Overrides (§4.6) are the one way to replace a dependency's requirement, only the project can declare them, and CPM shows wherever they apply.
 - The lockfile's versions are kept whenever they still fit (§4.5). The backtracking solver of CPM 0.4.1 and earlier gives the same result whenever the lockfile pins every package. Without a lockfile, the two may choose different solutions, both valid. Both prefer higher versions, but they decide packages in a different order.
 
 ### 4.5 Interaction with the lockfile
@@ -182,6 +182,29 @@ error: the project's dependencies can't be resolved
 | `cpm install --frozen-lockfile` | The lock MUST be fresh ([lockfile.md §4](lockfile.md#4-freshness)). The solver does not run. Nothing is written. |
 | `cpm remove <pkg…>` | The named entries are removed from the manifest. The remaining graph is re-resolved with every surviving lock entry pinned. Packages that are no longer reachable are dropped. |
 | `cpm update [pkg…]` | Ignores lock preferences for the named packages, or for all of them, so they resolve to the newest versions their ranges allow. Git branches move to their current commit. The manifest is unchanged. |
+
+### 4.6 Overrides
+
+When the project knows that a dependency works with a version the dependency's range doesn't allow, it can say so in `"overrides"` in its `cpm.jsonc` ([manifest.md §3](manifest.md#3-field-reference)), instead of waiting for a new release of that dependency:
+
+```jsonc
+"overrides": {
+  "fmt": "^10.2.0",         // every package's requirement on fmt
+  "spdlog>fmt": "^10.2.0"   // only spdlog's requirement on fmt
+}
+```
+
+- **What changes.** An override replaces the version range of other packages' requirements on a name. `"fmt"` replaces it in every package that requires fmt, and `"spdlog>fmt"` only in spdlog, whatever its version. The scoped form wins over the plain one. The override's range becomes the whole requirement: the dependency's own range no longer counts. A requirement that names a git or path source has no range, so overrides leave it alone.
+- **What stays.**
+  - There is still one fmt (§4.1).
+  - Overrides don't touch the project's own `dependencies` and `devDependencies`, since the project states those directly.
+  - They don't add a dependency: an override on a name that no package requires does nothing, and `cpm install` warns about it.
+- **Never silent.**
+  - Explanations (§4.3) mark an overridden requirement: `spdlog 1.12.0 depends on fmt ^10.2.0 (override)`. When one is involved in a conflict, the hint names the override too.
+  - `cpm-lock.json` records the overrides, and for each package the requirements that an override replaced, with the package's own range ([lockfile.md §2](lockfile.md#2-schema)).
+  - `cpm install` lists the replaced requirements every time it runs. `cpm why` shows the override next to the dependent's own range, and `cpm outdated` says when an override is no longer needed ([cli.md](cli.md#cpm-outdated)).
+- **Only the project.** An override is the final project's decision, made with all of its dependencies in view. `cpm publish` refuses a package that declares overrides. When the manifest of a git or path dependency declares overrides, CPM ignores them with a warning.
+- **No longer needed.** An override is no longer needed when every requirement it replaced, at its own range, allows the version that `cpm-lock.json` has, or when it replaced nothing. Removing it then changes no versions.
 
 ## 5. ODR policy and symbol isolation
 

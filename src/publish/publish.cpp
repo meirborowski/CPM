@@ -115,6 +115,10 @@ Package pack(const manifest::Manifest& m) {
         throw Error(std::format("{} is private, so it cannot be published", m.name),
                     "remove \"private\": true from cpm.jsonc to publish it");
     }
+    if (!m.overrides.empty()) {
+        throw Error(std::format("{} declares \"overrides\", which a published package cannot have", m.name),
+                    "overrides are for the project being built (dependencies.md §4.6); remove them from cpm.jsonc to publish");
+    }
     if (!m.version.build.empty()) {
         throw Error(std::format("version {} has build metadata, which registries do not allow", m.version.to_string()));
     }

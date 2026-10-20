@@ -144,6 +144,10 @@ int cmd_why(const ParsedArgs& args, Context& ctx) {
     };
     auto requirement_of = [&](const lock::Package* dependent, const std::string& name) -> std::optional<std::string> {
         const manifest::Manifest* m = &r.manifest;
+        // A requirement an override replaced: the override, then the dependent's own range (dependencies.md §4.6).
+        if (dependent != nullptr) {
+            if (auto overridden = install::overridden_requirement(r.lock, *dependent, name)) return overridden;
+        }
         if (dependent != nullptr) {
             const auto& loaded = manifest_of(*dependent);
             if (!loaded) return std::nullopt;

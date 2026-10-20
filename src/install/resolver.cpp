@@ -127,6 +127,7 @@ struct Incompatibility {
     Cause cause = Cause::Root;
     int left = -1, right = -1;   // Derived: the two incompatibilities it was derived from
     std::optional<Term> unmet;   // Dependency: a requirement that matches no version (terms then hold only the dependent)
+    std::string override_key;    // Dependency: the project's override that replaced the requirement's range, if any
 };
 using Cause = Incompatibility::Cause;
 
@@ -323,7 +324,12 @@ private:
             }
             Term dependent{pkg, true, Bits(packages_[pkg].versions.size()), {}};
             for (std::size_t j = lo; j <= hi; ++j) dependent.set.set(j);
-            Term needed = requirement(dep, spec);
+            // The project's overrides replace the ranges of other packages' requirements (§4.6).
+            const auto* overriding = pkg == kProject ? nullptr : manifest::override_for(root_, packages_[pkg].name, spec);
+            manifest::DependencySpec effective = spec;
+            if (overriding) effective.range = overriding->second;
+            Term needed = requirement(dep, effective);
+            if (overriding) needed.label += " (override)";
             int id;
             if (needed.set.none()) {
                 // Nothing can satisfy it, so these versions can't be used at all.
@@ -332,6 +338,7 @@ private:
             } else {
                 id = create({dependent, needed}, Cause::Dependency);
             }
+            if (overriding) incompatibilities_[id].override_key = overriding->first;
             attach(id);
             dependency_ids_.emplace(memo, id);
             ids.push_back(id);
@@ -353,7 +360,7 @@ private:
             if (it == merged.end()) merged.push_back(std::move(t));
             else *it = intersect(*it, t);
         }
-        incompatibilities_.push_back({std::move(merged), cause, left, right, std::nullopt});
+        incompatibilities_.push_back({std::move(merged), cause, left, right, std::nullopt, {}});
         return static_cast<int>(incompatibilities_.size()) - 1;
     }
 
@@ -740,7 +747,7 @@ private:
 
     // The project's dependencies named in the explanation, which are what the project can change.
     std::string hint(int failure) const {
-        std::set<std::string> project, others;
+        std::set<std::string> project, others, overrides;
         std::set<int> seen;
         std::function<void(int)> walk = [&](int id) {
             if (!seen.insert(id).second) return;
@@ -752,15 +759,21 @@ private:
                 const Term& dep = inc.unmet ? *inc.unmet : inc.terms[1];
                 if (inc.terms[0].pkg == kProject) project.insert(packages_[dep.pkg].name);
                 else others.insert(packages_[inc.terms[0].pkg].name);
-                // A git or path source the project chose is the project's to change too.
+                // A git or path source the project chose, and an override, are the project's to change too.
                 if (inc.unmet && packages_[dep.pkg].root_declared) project.insert(packages_[dep.pkg].name);
+                if (!inc.override_key.empty()) overrides.insert(std::format("\"{}\"", inc.override_key));
             }
         };
         walk(failure);
-        std::string out;
-        if (!project.empty()) {
-            out = std::format("change the range of {} in cpm.jsonc", join(std::vector<std::string>(project.begin(), project.end()), "or"));
+        std::vector<std::string> what;
+        if (!project.empty()) what.push_back("the range of " + join(std::vector<std::string>(project.begin(), project.end()), "or"));
+        if (!overrides.empty()) {
+            what.push_back(std::string(overrides.size() == 1 ? "the override " : "the overrides ") +
+                           join(std::vector<std::string>(overrides.begin(), overrides.end()), "or"));
         }
+        std::string out;
+        if (what.size() == 1) out = std::format("change {} in cpm.jsonc", what[0]);
+        if (what.size() == 2) out = std::format("change {}, or {}, in cpm.jsonc", what[0], what[1]);
         if (!others.empty()) out += (out.empty() ? "" : "; ") + std::string("cpm info <package> shows what each version depends on");
         return out;
     }
@@ -791,18 +804,30 @@ Resolution Solver::result() const {
         for (const auto& d : *list) dependents[d.name].push_back("root");
     }
     std::map<std::string, const PackageMeta*> chosen;
+    std::map<std::string, std::map<std::string, std::string>> overridden;
+    std::set<std::string> used;
     for (int pkg = 1; pkg < static_cast<int>(packages_.size()); ++pkg) {
         const Package& p = packages_[pkg];
         if (!p.decided) continue;
         const PackageMeta& m = sources_.describe(p.spec, p.declaring_dir, p.versions[*p.decided], p.locked);
         chosen.emplace(p.name, &m);
-        for (const auto& d : m.manifest.dependencies) dependents[d.name].push_back(p.name + "@" + m.version.to_string());
+        for (const auto& d : m.manifest.dependencies) {
+            dependents[d.name].push_back(p.name + "@" + m.version.to_string());
+            if (const auto* o = manifest::override_for(root_, p.name, d)) {
+                overridden[p.name][d.name] = d.range;
+                used.insert(o->first);
+            }
+        }
     }
     for (const auto& [name, meta] : chosen) {
         ResolvedPackage p;
         p.meta = *meta;
         p.dependents = dependents[name];
+        p.overridden = overridden[name];
         res.packages.emplace(name, std::move(p));
+    }
+    for (const auto& [key, range] : root_.overrides) {
+        if (!used.contains(key)) res.unused_overrides.push_back(key);
     }
 
     // dev: not reachable from the root's regular dependencies

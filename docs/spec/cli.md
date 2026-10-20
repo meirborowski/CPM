@@ -78,7 +78,7 @@ Without specs, CPM installs everything in the manifest. With specs, it adds or u
 
 A spec is a registry package (`fmt` adds `^<newest release>`, or the exact version with `-E`; `fmt@~10.1` keeps the range as typed), a path (`../mylib`, `file:../mylib`), a git URL (`git+https://host/repo.git#v1.2.0`, `github:owner/repo#v1.2.0`), or a path or git spec prefixed with a name (`mylib@file:../mylib`). A path or git spec without a name takes the name from the package's own `cpm.jsonc`; a package without one must be added by hand with a manifest overlay. Relative paths are resolved against the current directory and written relative to the project root. `--offline` and `--prefer-offline` exclude each other.
 
-After a successful install CPM reports every manifest edit (`Updated cpm.jsonc: dependencies "mylib": "file:../mylib"`) and every package change: `+` added, `-` removed, `~` changed version or source.
+After a successful install CPM reports every manifest edit (`Updated cpm.jsonc: dependencies "mylib": "file:../mylib"`) and every package change: `+` added, `-` removed, `~` changed version or source. It then lists each requirement that an override replaced ([dependencies.md §4.6](dependencies.md#46-overrides)), every time: `Overriding spdlog 1.12.0's requirement fmt ^9.1.0 with ^10.2.0`. An override that replaced nothing gets a warning.
 
 **Pipeline** (each step is reported):
 
@@ -185,7 +185,7 @@ fmt      11.1.4   11.2.0  12.2.0
 spdlog   1.17.0   1.17.0  2.0.0
 ```
 
-The table goes to stdout. Path and git dependencies are skipped with a note on stderr, since they have no registry versions to compare. Indexes are read like `cpm install` reads them ([registry.md §5](registry.md#5-client-behaviour)), and a dependency whose registry has no such package is an error. The exit code is 0 whether or not something is outdated.
+The table goes to stdout. After it, a note on stderr names each override that is no longer needed ([dependencies.md §4.6](dependencies.md#46-overrides)): every requirement it replaced now allows the locked version, or it replaced nothing. Path and git dependencies are skipped with a note on stderr, since they have no registry versions to compare. Indexes are read like `cpm install` reads them ([registry.md §5](registry.md#5-client-behaviour)), and a dependency whose registry has no such package is an error. The exit code is 0 whether or not something is outdated.
 
 ### `cpm info`
 
@@ -256,6 +256,7 @@ fmt 12.2.0
 
 - The project's ranges come from its `cpm.jsonc`. A dependency's ranges come from its manifest: in the store, or in its directory for a path dependency. When that manifest isn't on this machine, for example before `cpm install` has run, the step shows the locked version instead of a range.
 - devDependencies of the project are marked `(dev)`.
+- A requirement that an override replaced shows the override, then the dependent's own range: `^10.2.0 (override of ^9.1.0) from spdlog 1.12.0`.
 - A dependent already shown higher up is marked `(*)` and not followed again, so the output stays small in graphs with many shared dependencies.
 - A package that isn't in `cpm-lock.json` is an error.
 
@@ -298,7 +299,7 @@ Removing something a project still needs costs a rebuild, never a broken project
 cpm publish [--registry <name|url>] [--out <dir>] [--dry-run]
 ```
 
-Packs the current package and adds its version to a registry ([registry.md §6](registry.md#6-publishing)). Without `--registry` it uses the default registry. A `file://` registry is written directly. Any other registry needs `--out <dir>`, which writes the archive and the updated index document there, to be uploaded to the registry's host. `--dry-run` runs every check and packs the archive, then lists the files and writes nothing. `--with-binary` is reserved and currently refused.
+Packs the current package and adds its version to a registry ([registry.md §6](registry.md#6-publishing)). Without `--registry` it uses the default registry. A `file://` registry is written directly. Any other registry needs `--out <dir>`, which writes the archive and the updated index document there, to be uploaded to the registry's host. `--dry-run` runs every check and packs the archive, then lists the files and writes nothing. A package that declares `overrides` is refused: they are for the project being built. `--with-binary` is reserved and currently refused.
 
 ### `cpm setup`
 

@@ -259,6 +259,7 @@ lock::Lockfile make_lock(const manifest::Manifest& root, const Resolution& res, 
     };
     for (const auto& s : root.dependencies) lock.dependencies[s.name] = root_dep(s);
     for (const auto& s : root.dev_dependencies) lock.dev_dependencies[s.name] = root_dep(s);
+    lock.overrides = root.overrides;
 
     for (const auto& [name, r] : res.packages) {
         lock::Package p;
@@ -267,6 +268,7 @@ lock::Lockfile make_lock(const manifest::Manifest& root, const Resolution& res, 
         p.resolution = r.meta.resolution;
         p.std = r.meta.manifest.std;
         p.dev = r.dev;
+        p.overridden = r.overridden;
         for (const auto& d : r.meta.manifest.dependencies) p.dependencies[d.name] = res.packages.at(d.name).meta.version;
         // The type may be inferred from the files, which for git packages are in the store.
         if (std::holds_alternative<lock::RegistryResolution>(p.resolution)) {
@@ -412,6 +414,14 @@ void report(const std::optional<lock::Lockfile>& before, const lock::Lockfile& a
         if (!new_pkgs.contains(name)) lines.push_back(std::format("{} {} {}", log::red("-"), name, p->version.to_string()));
     }
     for (const auto& l : lines) log::info(l);
+    // Overrides are never silent (dependencies.md §4.6): list what they replaced on every install.
+    for (const auto& [key, p] : after.packages) {
+        for (const auto& [dep, own] : p.overridden) {
+            const auto* o = manifest::find_override(after.overrides, p.name, dep);
+            log::status("Overriding", std::format("{} {}'s requirement {} {} with {}", p.name, p.version.to_string(), dep, own,
+                                                  o ? o->second : std::string("?")));
+        }
+    }
     std::size_t n = after.packages.size();
     log::status("Done", std::format("{}{} package{} in {:.2f}s", lines.empty() ? "already up to date, " : "", n,
                                     n == 1 ? "" : "s", seconds));
@@ -480,6 +490,10 @@ std::vector<build::Dependency> install(build::Project& project, const Options& o
     }
     Sources sources(root, project.home, registries, options.offline);
     Resolution res = resolve(m, sources, pins ? &*pins : nullptr);
+    for (const auto& key : res.unused_overrides) {
+        log::warn(std::format("the override \"{}\" in cpm.jsonc replaced no requirement", key),
+                  "no resolved package requires that name; check it, or remove the override");
+    }
     lock::Lockfile new_lock = make_lock(m, res, project, options.offline);
     if (options.frozen && lock::serialize(new_lock) != lock::serialize(*old_lock)) {
         throw Error("resolving again gives a different result than cpm-lock.json", "run 'cpm install' and commit the result");

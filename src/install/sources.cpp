@@ -4,6 +4,7 @@
 
 #include "core/error.hpp"
 #include "core/fsx.hpp"
+#include "core/log.hpp"
 #include "core/paths.hpp"
 #include "install/fetch.hpp"
 #include "install/git.hpp"
@@ -47,6 +48,10 @@ const PackageMeta& Sources::describe_single(const manifest::DependencySpec& spec
     if (auto it = cache_.find(key); it != cache_.end()) return it->second;
     PackageMeta meta = spec.kind == Kind::Path ? describe_path(spec, declaring_dir) : describe_git(spec, pin);
     check_kind(meta);
+    if (!meta.manifest.overrides.empty()) {
+        log::warn(std::format("{} declares \"overrides\", which are ignored: only the project being built can override", spec.name),
+                  "move them to the project's own cpm.jsonc if they are needed (dependencies.md §4.6)");
+    }
     meta.overlay = spec.overlay;
     return cache_.emplace(key, std::move(meta)).first->second;
 }

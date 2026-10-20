@@ -45,4 +45,37 @@ OutdatedReport outdated(const manifest::Manifest& manifest, const lock::Lockfile
     return report;
 }
 
+std::vector<std::string> unneeded_overrides(const manifest::Manifest& manifest, const lock::Lockfile& lock) {
+    std::vector<std::string> notes;
+    for (const auto& [key, range] : manifest.overrides) {
+        auto arrow = key.find('>');
+        std::string name = arrow == std::string::npos ? key : key.substr(arrow + 1);
+        // The requirements this override replaced: the lockfile records each with the dependent's own range.
+        std::vector<std::string> dependents;
+        bool all_allow = true;
+        const lock::Package* target = lock.find(name);
+        for (const auto& [k, p] : lock.packages) {
+            auto own = p.overridden.find(name);
+            if (own == p.overridden.end()) continue;
+            const auto* applied = manifest::find_override(manifest.overrides, p.name, name);
+            if (applied == nullptr || applied->first != key) continue;
+            dependents.push_back(p.name);
+            auto r = semver::Range::parse(own->second);
+            if (!target || !r || !r->contains(target->version)) all_allow = false;
+        }
+        if (dependents.empty()) {
+            notes.push_back(std::format("the override \"{}\" replaces no requirement; remove it from cpm.jsonc", key));
+        } else if (all_allow) {
+            std::string who;
+            for (std::size_t i = 0; i < dependents.size(); ++i) {
+                who += (i == 0 ? "" : i + 1 == dependents.size() ? " and " : ", ") + dependents[i];
+            }
+            notes.push_back(std::format("the override \"{}\" is no longer needed: {} accept{} {} {} by {}", key, who,
+                                        dependents.size() == 1 ? "s" : "", name, target->version.to_string(),
+                                        dependents.size() == 1 ? "itself" : "themselves"));
+        }
+    }
+    return notes;
+}
+
 }  // namespace cpm::install

@@ -101,8 +101,9 @@ Machine-readable: [`schema/cpm-lock.schema.json`](../../schema/cpm-lock.schema.j
 |---|---|---|
 | `dependencies` | object | Name → `{ "specifier": string, "version": string }`. `specifier` is the manifest value verbatim (canonical JSON for object forms, [dependencies.md §1.2](dependencies.md#12-object-form)). |
 | `devDependencies` | object | Same shape, for `devDependencies`. |
+| `overrides` | object | The manifest's `overrides` ([dependencies.md §4.6](dependencies.md#46-overrides)), key to range, verbatim. Written only when the manifest has overrides. |
 
-Empty maps are written as `{}`. Neither key is ever omitted.
+Empty `dependencies` and `devDependencies` are written as `{}`; neither key is ever omitted.
 
 ### 2.3 Package entry
 
@@ -113,6 +114,7 @@ Empty maps are written as `{}`. Neither key is ever omitted.
 | `std` | string | always | The package's minimum C++ standard (after any overlay). |
 | `dependencies` | object | if non-empty | Name → exact resolved version of this package's dependencies. |
 | `dev` | bool | only when `true` | The package is reachable **only** through root `devDependencies`. |
+| `overridden` | object | if non-empty | Name → this package's own range for a dependency whose range an override replaced. With the importer's `overrides`, it says exactly which requirements were changed, and from what. |
 
 `type` and `std` can be derived from the pinned source. They are recorded anyway so that `cpm build` can check `std` compatibility and plan links without opening every package manifest, and so that reviewers can see in a diff when a package's type changes.
 
@@ -134,7 +136,7 @@ CPM MUST write the lockfile so that the same logical content always produces the
 4. Every non-empty object and array puts one member per line. Empty ones are written as `{}` / `[]` on one line.
 5. Strings: escape `"`, `\` and control characters U+0000–U+001F (as `\n`, `\t`, `\r`, `\b`, `\f` or `\u00XX`, lowercase hex). Everything else, including `/` and non-ASCII characters, is written raw.
 6. Integers only (`lockfileVersion`). No floating-point numbers occur.
-7. Optional keys are written only when §2 says so (`dev` only when `true`, `dependencies` only when non-empty, `ref` only when present).
+7. Optional keys are written only when §2 says so (`dev` only when `true`, `dependencies` and `overridden` only when non-empty, `overrides` only when the manifest has some, `ref` only when present). A project without overrides therefore gets the same bytes as before overrides existed.
 
 CPM writes the lockfile **only if its bytes change**, atomically (write to a temporary file, then rename). A lockfile that CPM reads and writes back unchanged MUST round-trip byte for byte.
 
@@ -143,9 +145,9 @@ CPM writes the lockfile **only if its bytes change**, atomically (write to a tem
 The lockfile is **fresh** for a manifest when all of the following hold:
 
 1. `lockfileVersion` is supported.
-2. `importers["."].dependencies` and `importers["."].devDependencies` have exactly the manifest's names, and each `specifier` equals the manifest's specifier string.
+2. `importers["."].dependencies` and `importers["."].devDependencies` have exactly the manifest's names, and each `specifier` equals the manifest's specifier string. `importers["."].overrides` equals the manifest's `overrides`.
 3. Every `version` in the importers and every version in a package's `dependencies` refers to an existing `packages` key, and every `packages` entry is reachable from the importers. A lockfile that fails this check is corrupt, which is an error, not merely stale.
-4. For every **path** package: its current manifest (plus overlay) still has the recorded `type` and `std` and the same dependency names. Each declared range is satisfied by the locked version, and the source kind (registry, git or path) of each dependency matches its locked resolution. Path packages can change on disk, so they are re-checked every time.
+4. For every **path** package: its current manifest (plus overlay) still has the recorded `type` and `std` and the same dependency names. Each declared range, or the override that replaces it, is satisfied by the locked version, and the source kind (registry, git or path) of each dependency matches its locked resolution. Path packages can change on disk, so they are re-checked every time.
 
 Registry and git packages are immutable, so their lock entries are never re-checked against their manifests.
 

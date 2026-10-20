@@ -218,10 +218,10 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - a shared build cache, with prebuilt binaries when a registry offers them;
 - publishing, searching the registry, and finding outdated dependencies;
 - inspecting packages and dependency graphs (`cpm info`, `cpm tree`, `cpm why`), and cleaning the store (`cpm cache`);
-- version conflicts explained step by step, by a PubGrub resolver;
+- version conflicts explained step by step, by a PubGrub resolver, and version overrides for when a dependency's range is too strict;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** version overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.3.
+**Next, on the [road to 0.5.0](ROADMAP.md):** choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.4.
 
 ## Documentation
 

@@ -39,4 +39,8 @@ std::string render_why(const lock::Lockfile& lock, std::string_view project, con
 // A manifest's dependency as `cpm why` shows it: "^12.2.0", "git <url>#<ref>" or "path <path>".
 std::string requirement(const manifest::DependencySpec& spec);
 
+// A requirement of `dependent` on `name` that an override replaced, as `cpm why` shows it: "^10.2.0 (override of
+// ^9.1.0)". nullopt when the lockfile records no such override (dependencies.md §4.6).
+std::optional<std::string> overridden_requirement(const lock::Lockfile& lock, const lock::Package& dependent, const std::string& name);
+
 }  // namespace cpm::install

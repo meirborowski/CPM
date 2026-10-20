@@ -33,6 +33,12 @@
     },
     "dependencies": { "$ref": "#/definitions/dependencyMap" },
     "devDependencies": { "$ref": "#/definitions/dependencyMap" },
+    "overrides": {
+      "type": "object",
+      "description": "Version ranges that replace dependencies' requirements, for the project being built: \"fmt\" for every package's requirement on fmt, \"spdlog>fmt\" for spdlog's only (docs/spec/dependencies.md §4.6).",
+      "propertyNames": { "pattern": "^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?:>[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?)?$" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
     "profiles": {
       "type": "object",
       "propertyNames": { "pattern": "^[a-z][a-z0-9-]{0,31}$" },

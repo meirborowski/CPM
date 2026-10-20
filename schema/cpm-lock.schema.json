@@ -57,6 +57,12 @@
           "type": "object",
           "propertyNames": { "$ref": "#/definitions/packageName" },
           "additionalProperties": { "$ref": "#/definitions/rootDependency" }
+        },
+        "overrides": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "The manifest's overrides, verbatim.",
+          "additionalProperties": { "type": "string" }
         }
       }
     },
@@ -74,7 +80,14 @@
           "propertyNames": { "$ref": "#/definitions/packageName" },
           "additionalProperties": { "$ref": "#/definitions/version" }
         },
-        "dev": { "const": true }
+        "dev": { "const": true },
+        "overridden": {
+          "type": "object",
+          "minProperties": 1,
+          "description": "Dependency name -> this package's own range, which an override replaced.",
+          "propertyNames": { "$ref": "#/definitions/packageName" },
+          "additionalProperties": { "type": "string" }
+        }
       }
     },
     "resolution": {

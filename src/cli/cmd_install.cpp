@@ -98,6 +98,9 @@ int cmd_outdated(const ParsedArgs& args, Context& ctx) {
     else if (report.entries.empty()) log::info("No registry dependencies to check");
     else if (report.entries.size() == 1) log::info("The registry dependency is up to date");
     else log::info(std::format("All {} registry dependencies are up to date", report.entries.size()));
+    if (lock) {
+        for (const auto& note : install::unneeded_overrides(m, *lock)) log::info("note: " + note);
+    }
     return 0;
 }
 

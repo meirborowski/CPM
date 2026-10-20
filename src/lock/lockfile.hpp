@@ -39,6 +39,7 @@ struct Package {
     std::string std = "c++20";
     std::map<std::string, semver::Version> dependencies;  // name -> exact version
     bool dev = false;
+    std::map<std::string, std::string> overridden;  // name -> this package's own range, which an override replaced
 
     std::string key() const;  // "name@version"
 };
@@ -52,6 +53,7 @@ struct Lockfile {
     std::map<std::string, RootDependency> dependencies;      // importers["."].dependencies
     std::map<std::string, RootDependency> dev_dependencies;  // importers["."].devDependencies
     std::map<std::string, Package> packages;                 // by "name@version"
+    std::map<std::string, std::string> overrides;            // importers["."].overrides: the manifest's overrides
 
     // The (single) locked package with this name.
     const Package* find(std::string_view name) const;

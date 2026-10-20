@@ -96,6 +96,22 @@ void read_root_deps(manifest::Checker& c, const json::Value& importer, const cha
     }
 }
 
+// An optional object of strings ("overrides", "overridden").
+void read_ranges(manifest::Checker& c, const json::Value& parent, const char* key, std::map<std::string, std::string>& out) {
+    const json::Value* map = c.object(parent, key);
+    if (map == nullptr) return;
+    for (const auto& m : map->as_object()) {
+        if (m.value.is_string()) out[m.key] = m.value.as_string();
+        else c.type_error(m.value, std::format("\"{}\" in \"{}\"", m.key, key), "a string");
+    }
+}
+
+json::Value ranges_json(const std::map<std::string, std::string>& ranges) {
+    json::Value v = json::Value::object();
+    for (const auto& [key, range] : ranges) v.set(key, range);
+    return v;
+}
+
 json::Value resolution_json(const Resolution& r) {
     json::Value v = json::Value::object();  // keys in sorted order
     if (const auto* reg = std::get_if<RegistryResolution>(&r)) {
@@ -164,6 +180,7 @@ Lockfile parse(std::string_view text, const std::string& display) {
     } else {
         read_root_deps(c, *dot, "dependencies", lock.dependencies);
         read_root_deps(c, *dot, "devDependencies", lock.dev_dependencies);
+        read_ranges(c, *dot, "overrides", lock.overrides);
     }
 
     if (const json::Value* packages = c.object(root, "packages")) {
@@ -200,6 +217,7 @@ Lockfile parse(std::string_view text, const std::string& display) {
                     if (auto v = version_at(c, d.value, std::format("dependency \"{}\"", d.key))) p.dependencies[d.key] = *v;
                 }
             }
+            read_ranges(c, e, "overridden", p.overridden);
             lock.packages.emplace(m.key, std::move(p));
         }
     }
@@ -211,6 +229,7 @@ std::string serialize(const Lockfile& lock) {
     json::Value importer = json::Value::object();
     importer.set("dependencies", root_deps_json(lock.dependencies));
     importer.set("devDependencies", root_deps_json(lock.dev_dependencies));
+    if (!lock.overrides.empty()) importer.set("overrides", ranges_json(lock.overrides));
     json::Value importers = json::Value::object();
     importers.set(".", std::move(importer));
 
@@ -223,6 +242,7 @@ std::string serialize(const Lockfile& lock) {
             e.set("dependencies", std::move(deps));
         }
         if (p.dev) e.set("dev", true);
+        if (!p.overridden.empty()) e.set("overridden", ranges_json(p.overridden));
         e.set("resolution", resolution_json(p.resolution));
         e.set("std", p.std);
         e.set("type", std::string(manifest::to_string(p.type)));
@@ -265,6 +285,7 @@ std::optional<std::string> staleness(const Lockfile& lock, const manifest::Manif
     };
     if (auto why = compare_importer(root.dependencies, lock.dependencies, "dependencies")) return why;
     if (auto why = compare_importer(root.dev_dependencies, lock.dev_dependencies, "devDependencies")) return why;
+    if (root.overrides != lock.overrides) return std::string("the overrides changed");
 
     // 3. Every reference resolves and every package is reachable; otherwise the file is corrupt.
     std::set<std::string> reachable;
@@ -303,9 +324,11 @@ std::optional<std::string> staleness(const Lockfile& lock, const manifest::Manif
             if (kind_of(locked->resolution) != want)
                 return std::format("{} now wants {} from a {} source", key, d.name, want);
             if (d.kind == manifest::DependencySpec::Kind::Registry) {
-                auto range = semver::Range::parse(d.range);
+                const auto* o = manifest::override_for(root, p.name, d);
+                const std::string& wanted = o ? o->second : d.range;
+                auto range = semver::Range::parse(wanted);
                 if (!range || !range->contains(locked->version))
-                    return std::format("{} needs {} {}, but {} is locked", key, d.name, d.range, locked->version.to_string());
+                    return std::format("{} needs {} {}, but {} is locked", key, d.name, wanted, locked->version.to_string());
             }
         }
     }

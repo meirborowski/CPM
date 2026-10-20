@@ -61,6 +61,7 @@ struct Manifest {
     std::vector<std::string> defines, public_defines, system_libs, files;
     std::vector<std::pair<std::string, std::string>> scripts;
     std::vector<DependencySpec> dependencies, dev_dependencies;
+    std::map<std::string, std::string> overrides;  // "fmt" or "spdlog>fmt" -> range (dependencies.md §4.6)
     std::map<std::string, Profile> profiles;
     std::map<std::string, PlatformOverrides> platforms;  // windows | linux | macos | unix
 
@@ -78,6 +79,16 @@ inline const std::vector<std::string>& known_standards() {
 }
 
 bool valid_package_name(std::string_view name);
+
+// The override for `dependent`'s requirement on `name` (dependencies.md §4.6): the scoped "dependent>name" entry, else
+// the plain "name" one. Returns the entry (key and range), or nullptr.
+const std::pair<const std::string, std::string>* find_override(const std::map<std::string, std::string>& overrides,
+                                                               std::string_view dependent, std::string_view name);
+
+// The override that replaces a package's requirement, from the project's manifest. Requirements that name a git or
+// path source have no range, so nothing replaces them.
+const std::pair<const std::string, std::string>* override_for(const Manifest& project, std::string_view dependent,
+                                                              const DependencySpec& requirement);
 
 // Parses manifest text. `file` is the manifest's path; `display` is how to name it in diagnostics.
 // Throws DiagnosticsError listing every problem found.

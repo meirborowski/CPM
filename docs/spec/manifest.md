@@ -89,6 +89,7 @@ The same manifest, together with its lockfile and registry index, is in [example
 | `scripts` | object | `{}` | Map of script name to shell command, run by `cpm run <name>` ([cli.md](cli.md#cpm-run)). |
 | `dependencies` | object | `{}` | Map of package name to specifier ([dependencies.md §1](dependencies.md#1-dependency-specifiers)). |
 | `devDependencies` | object | `{}` | Same as `dependencies`, but used only for tests and only when this package is the root. |
+| `overrides` | object | `{}` | Version ranges that replace dependencies' requirements: `"fmt": "^10.2.0"`, or `"spdlog>fmt": "^10.2.0"` for one dependent ([dependencies.md §4.6](dependencies.md#46-overrides)). Only the project being built uses them, and `cpm publish` refuses a package that has them. |
 | `profiles` | object | built-ins | Build profiles (§6). |
 | `platforms` | object | `{}` | Per-OS additions (§7). |
 
@@ -191,6 +192,7 @@ CPM validates the manifest after parsing and reports **all** problems it finds, 
 - missing or invalid `name` or `version`; an unknown `type`, `std` or profile value
 - a dependency that appears in both `dependencies` and `devDependencies`
 - a dependency on the package itself
+- an `overrides` key that isn't a package name or `<dependent>><name>` with two different names, or a value that isn't a version range
 - a `main` that does not exist, or an explicit `type` that contradicts the files on disk (`executable` without an entrypoint)
 - `profiles` problems: a custom profile without `inherits`, an inheritance cycle, an invalid name
 

@@ -18,45 +18,13 @@ using json::Value;
 
 namespace {
 
-// A file:// registry whose index documents are written directly: resolution reads only the index, so the
-// archives they name don't need to exist.
-class Index {
-public:
-    explicit Index(fs::path dir) : reg_(std::move(dir)) {}
+using fixture::Index;
 
-    Index& add(const std::string& name, const std::string& version, std::map<std::string, std::string> deps = {},
-               bool yanked = false) {
-        Value e = fixture::entry("header-only", "c++17", std::move(deps));
-        Value source = Value::object();
-        source.set("url", "packages/" + name + "-" + version + ".tar.gz");
-        source.set("integrity", "sha256:" + std::string(64, '0'));
-        e.set("source", std::move(source));
-        if (yanked) e.set("yanked", true);
-        auto [it, inserted] = docs_.try_emplace(name, Value::object());
-        if (inserted) {
-            it->second.set("name", name);
-            it->second.set("versions", Value::object());
-        }
-        it->second.find("versions")->set(version, std::move(e));
-        return *this;
-    }
-
-    void save() const {
-        for (const auto& [name, doc] : docs_) reg_.save(name, doc);
-    }
-
-    manifest::UserConfig config() const {
-        manifest::UserConfig c;
-        c.registries["default"] = {reg_.url(), false};
-        return c;
-    }
-
-    std::string base() const { return install::url::as_base(reg_.url()); }
-
-private:
-    fixture::Registry reg_;
-    std::map<std::string, Value> docs_;
-};
+manifest::UserConfig config_for(const Index& index) {
+    manifest::UserConfig c;
+    c.registries["default"] = {index.url(), false};
+    return c;
+}
 
 manifest::Manifest project(const fs::path& dir, const std::string& deps, const std::string& dev = "{}") {
     fixture::write(dir / "cpm.jsonc", R"({ "name": "app", "version": "1.0.0", "std": "c++20", "dependencies": )" + deps +
@@ -66,7 +34,7 @@ manifest::Manifest project(const fs::path& dir, const std::string& deps, const s
 
 install::Resolution resolve(const Index& index, const fs::path& home, const manifest::Manifest& m,
                             const lock::Lockfile* lock = nullptr) {
-    install::Registries regs(index.config(), home, install::Freshness::Online);
+    install::Registries regs(config_for(index), home, install::Freshness::Online);
     install::Sources sources(m.root, home, regs, false);
     return install::resolve(m, sources, lock);
 }

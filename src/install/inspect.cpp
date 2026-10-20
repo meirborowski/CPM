@@ -221,6 +221,13 @@ std::string render_why(const lock::Lockfile& lock, std::string_view project, con
     return render({label(*target), builder.dependents(*target)});
 }
 
+std::optional<std::string> overridden_requirement(const lock::Lockfile& lock, const lock::Package& dependent, const std::string& name) {
+    auto own = dependent.overridden.find(name);
+    const auto* applied = manifest::find_override(lock.overrides, dependent.name, name);
+    if (own == dependent.overridden.end() || applied == nullptr) return std::nullopt;
+    return std::format("{} (override of {})", applied->second, own->second);
+}
+
 std::string requirement(const manifest::DependencySpec& spec) {
     switch (spec.kind) {
         case manifest::DependencySpec::Kind::Registry: return spec.range;

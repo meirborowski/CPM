@@ -2,6 +2,30 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.3 — 2026-10-20
+
+When you know a dependency works with a version its range doesn't allow, say so in your project.
+
+### New
+
+- **Version overrides.** `"overrides"` in your project's `cpm.jsonc` replaces the range of your dependencies' requirements, so you don't have to wait for a dependency to release:
+
+  ```jsonc
+  "overrides": {
+    "fmt": "^10.2.0",         // every package's requirement on fmt
+    "spdlog>fmt": "^10.2.0"   // only spdlog's requirement on fmt
+  }
+  ```
+
+  The scoped form wins over the plain one. There is still one fmt, and your project's own ranges in `dependencies` and `devDependencies` are left as you wrote them.
+- **Overrides are never silent.**
+  - `cpm install` lists every requirement an override replaced (`Overriding spdlog 1.12.0's requirement fmt ^9.1.0 with ^10.2.0`), and warns about an override that replaces nothing.
+  - `cpm-lock.json` records the overrides, and which requirements they replaced, with the dependency's own range.
+  - `cpm why` shows `^10.2.0 (override of ^9.1.0) from spdlog 1.12.0`.
+  - `cpm outdated` notes an override that is no longer needed, because the dependency now accepts the version you use by itself.
+  - Conflict explanations mark overridden requirements, and their hint names the override.
+- **Only your project overrides.** `cpm publish` refuses a package that declares overrides, and overrides in a git or path dependency's `cpm.jsonc` are ignored with a warning.
+
 ## 0.4.2 — 2026-10-20
 
 When versions can't fit together, CPM now says why.

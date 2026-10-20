@@ -8,7 +8,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 |---|---|---|
 | 0.4.1 | Everyday commands | `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (released 2026-10-20) |
 | 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together (released 2026-10-20) |
-| 0.4.3 | Version overrides | Force a version when you know a dependency works with it |
+| 0.4.3 | Version overrides | Force a version when you know a dependency works with it (released 2026-10-20) |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command |
 | 0.4.5 | C sources | Compile `.c` files, so C libraries can be packaged |
 | 0.4.6 | More libraries | About 30 packages on cpm-registry.com, C libraries included |

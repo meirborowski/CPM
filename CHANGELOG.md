@@ -2,6 +2,21 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.1 — 2026-10-20
+
+See what you depend on and why, and keep `~/.cpm` tidy.
+
+### New
+
+- **`cpm info <package>[@<range>]`** shows a package on the registry without installing it: its type, C++ standard, license and description, its repository, owners and downloads, the dependencies of the version shown, and its versions with yanked ones marked. With a range it shows the version `cpm install` would pick. `--registry` asks another registry; for a static registry it shows what the index says.
+- **`cpm tree`** prints the project's resolved dependencies from `cpm-lock.json` as a tree, with devDependencies and git and path sources marked. `--depth <n>` limits how deep it goes and `--prod` leaves out devDependencies.
+- **`cpm why <package>`** shows every chain of dependencies that brings a package into the project, with the range each step asks for. It helps before you change a range, or when two dependencies want different versions.
+- **`cpm cache`** shows what CPM keeps in `~/.cpm`: the packages in the store, the libraries built there, downloads, git mirrors, the projects CPM knows, and how much of it nothing uses. **`cpm cache clean`** removes what no project uses (`--dry-run` shows it first). `cpm cache clean --all` empties the store and caches, and keeps your configuration, sign-ins and the tools `cpm setup` installed.
+
+### Also
+
+- `cpm install` and `cpm build` now record each project in `~/.cpm/projects.json`, which is how `cpm cache clean` knows what is still in use. A project that hasn't run either command since you upgraded isn't known yet: run `cpm install` in it before cleaning. Otherwise what it uses may be removed, and its next build downloads and builds it again.
+
 ## 0.4.0 — 2026-10-19
 
 Find packages and stale dependencies without leaving the terminal.

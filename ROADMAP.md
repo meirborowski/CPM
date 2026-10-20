@@ -6,7 +6,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 
 | Release | Theme | In short |
 |---|---|---|
-| 0.4.1 | Everyday commands | `cpm info`, `cpm tree`, `cpm why`, `cpm cache` |
+| 0.4.1 | Everyday commands | `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (released 2026-10-20) |
 | 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together |
 | 0.4.3 | Version overrides | Force a version when you know a dependency works with it |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command |

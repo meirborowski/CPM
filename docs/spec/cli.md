@@ -176,7 +176,7 @@ Lists the direct registry dependencies (`dependencies` and `devDependencies`) th
 | Wanted | the newest the range in `cpm.jsonc` allows, which `cpm update` moves to unless another package constrains it |
 | Latest | the newest on the registry, whatever the range |
 
-Versions are compared the way resolution orders them ([dependencies.md §4.2](dependencies.md#42-algorithm-mvp)): yanked versions never count, a release comes before any prerelease, and a prerelease is Wanted only when the range allows it ([§3.3](dependencies.md#33-prereleases)) and Latest only when the package has no release. A dependency is listed when its three versions are not all the same, with `-` for a version that does not exist: Current when the lockfile has none, Wanted when the range allows no unyanked version. When nothing is listed, CPM says that every registry dependency is up to date.
+Versions are compared the way resolution orders them ([dependencies.md §4.2](dependencies.md#42-algorithm)): yanked versions never count, a release comes before any prerelease, and a prerelease is Wanted only when the range allows it ([§3.3](dependencies.md#33-prereleases)) and Latest only when the package has no release. A dependency is listed when its three versions are not all the same, with `-` for a version that does not exist: Current when the lockfile has none, Wanted when the range allows no unyanked version. When nothing is listed, CPM says that every registry dependency is up to date.
 
 ```
 $ cpm outdated

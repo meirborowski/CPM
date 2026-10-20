@@ -116,7 +116,7 @@ So `^1.3.0-beta.1` matches `1.3.0-beta.2` and `1.3.5`, but not `1.4.0-alpha`. Pl
 
 ### 3.4 Representation
 
-`semver::Range` is stored as a **sorted union of disjoint intervals** `[lo, hi)` over version precedence, plus the set of `MAJOR.MINOR.PATCH` tuples for which prereleases are allowed. Intersection, union, complement and emptiness checks are exact. That is what a PubGrub solver needs (§4.4).
+`semver::Range` is stored as a **sorted union of disjoint intervals** `[lo, hi)` over version precedence, plus the set of `MAJOR.MINOR.PATCH` tuples for which prereleases are allowed. Intersection and membership are exact. The resolver doesn't do algebra on ranges: it turns each range into the set of existing versions it contains (§4.2).
 
 ## 4. Resolution
 
@@ -131,42 +131,47 @@ So `^1.3.0-beta.1` matches `1.3.0-beta.2` and `1.3.5`, but not `1.4.0-alpha`. Pl
   - registry: the index versions that satisfy the intersection of every range on the name, excluding yanked versions unless the lock already pins that exact version
   - git/path: the single version from §1.3
 
-### 4.2 Algorithm (MVP)
+### 4.2 Algorithm
 
-The MVP uses deterministic depth-first backtracking:
+CPM resolves with PubGrub, the conflict-driven algorithm of Dart's pub (also used by uv and Poetry). It learns from each conflict, so it doesn't retry combinations that are known to fail, and it can say why no solution exists (§4.3).
 
-```
-solve(assignments, pending):
-    if pending is empty: return assignments
-    name := the pending name with the fewest remaining candidates (ties: lexicographic)
-    for version in order(candidates(name)):          # locked version first, then highest to lowest
-        deps := dependencies(name, version)
-        if every dep is compatible with assignments:
-            r := solve(assignments + {name: version}, pending - name + new dep names)
-            if r succeeds: return r
-        record the conflict (name, version, the constraint it violated)
-    fail with the recorded conflicts
-```
-
-- Candidate order: (1) the locked version, if it still satisfies; (2) the remaining non-prerelease versions, highest first; (3) prereleases, if any range allows them, highest first.
+- **Version sets.** Each package name has a fixed, finite list of versions to choose from: the registry index's versions (yanked ones left out, unless the lockfile pins that version), or the single version of a git or path package. Every set of versions the solver works with is a subset of that list. A dependency's range becomes the versions in the list that it contains (§3).
+- **Terms and incompatibilities.** A term says that a package is selected with a version in a set, such as `fmt ^10.2.0`, or that it isn't (`not fmt ^9.1.0`). An incompatibility is a set of terms that can't all be true at once. For example, `{spdlog >=1.12.0, not fmt ^9.1.0}` says that those spdlog versions can't be used without fmt ^9.1.0. Resolution starts from the incompatibility "the project must be selected".
+- **Dependencies.** When the solver considers a version, it adds one incompatibility per dependency. For a registry package, the incompatibility covers the run of neighbouring versions, in version order, whose index entries declare the same requirement. One incompatibility can then cover `spdlog >=1.12.0` instead of one per version, which keeps explanations short.
+- **The loop.**
+  1. *Unit propagation* derives what the incompatibilities force: when every term but one is true, the last one must be false.
+  2. When an incompatibility becomes fully true, *conflict resolution* combines it with the incompatibilities that caused its terms, until it finds the root cause. It records that root cause as a new incompatibility and jumps back to the last decision it doesn't depend on.
+  3. When nothing more is forced, CPM *decides* a package: among the required packages not yet decided, the one with the fewest allowed versions (ties by name), at its best allowed candidate. When no version is allowed, that fact becomes an incompatibility.
+  4. It stops when every required package has a version, or when it learns that the project itself can't be satisfied.
+- **Candidate order:** (1) the locked version, if it is allowed; (2) the other non-prerelease versions, highest first; (3) prereleases, highest first, for ranges that allow them (§3.3).
+- **Sources first.** A name's source is fixed before its versions are chosen (§4.1): by the project when the project declares the name, otherwise by the first dependent CPM reads. Two dependents asking for one name from different sources is an error that names both. It is not explained as a conflict, since no choice of versions changes it.
+- **Missing packages.** A project dependency on a name that the registry doesn't have is an error. A package version that depends on a missing name can't be used, and resolution goes on without it.
 - Package metadata (versions, dependencies, type, std) comes from the **index entry** for registry packages, so no archive is downloaded during resolution. For git and path packages it comes from their manifest or overlay. Git repositories are fetched into the git cache to read it ([store.md §3](store.md#3-other-home-directories)).
 - **Determinism:** for the same manifest, lockfile, configuration and index contents, the result MUST be the same.
 
 ### 4.3 Conflict reporting
 
-When resolution fails, CPM prints the chain of constraints that cannot hold together:
+When no solution exists, CPM explains why, as a chain of reasons that ends at the project:
 
 ```
-error: no version of fmt satisfies all constraints
-  fmt ^10.2.0   required by  hello (root)
-  fmt ^9.1.0    required by  spdlog@1.12.0  ← required by hello (root) as ^1.12
-  available: 9.1.0, 10.0.0, 10.1.1, 10.2.1
-  hint: relax one of these constraints, or pick a spdlog version that accepts fmt 10
+error: the project's dependencies can't be resolved
+  Because spdlog >=1.12.0 depends on fmt ^9.1.0 and the project depends on fmt ^10.2.0, spdlog >=1.12.0 can't be used.
+  So, because the project depends on spdlog ^1.12.0, no versions satisfy every requirement.
+  hint: change the range of fmt or spdlog in cpm.jsonc; cpm info <package> shows what each version depends on
 ```
 
-### 4.4 PubGrub (*post-MVP*)
+- Each line puts two facts together and says what follows from them. The facts are what a package version depends on, what the project depends on, and what earlier lines concluded. A requirement that nothing can meet says why: `a 1.0.0 depends on fmt ^99.0.0, which matches no version (available: 12.2.0, 12.1.0, …)`, `…, which doesn't match mylib 2.0.0 (path ../mylib)` or `…, which <registry> doesn't have`. A chain of dependencies reads in order, from the dependent to what it needs.
+- The first line of a part starts with "Because", the lines after it with "And because", and the last line of the explanation with "So, because". When nothing needs combining, the explanation is a single sentence, such as `The project depends on fmt ~12.1.0, which matches no version (available: 12.2.0).`
+- A conclusion that a later line refers back to gets a number, such as `(1)`, at the start of its line, and the later line cites it by that number. An explanation that has to follow two separate branches shows them as parts separated by a blank line.
+- A version set reads as the range it came from when it came from one (`fmt ^9.1.0`). Otherwise it is written with versions that exist: `spdlog 1.17.0`, `spdlog >=1.12.0`, `spdlog <=1.15.0`, `spdlog >=1.12.0 <=1.15.0`, several of those joined by `||`, or `every version of spdlog`. Git and path packages show their source, such as `mylib 0.1.0 (path ../mylib)`.
+- The hint names the packages whose range, or git or path source, in the project's `cpm.jsonc` is part of the explanation, since those are what the project can change. When other packages' dependencies are part of it too, the hint points to `cpm info`, which lists what each version depends on.
+- In a project that installed before, `cpm why <package>` ([cli.md](cli.md#cpm-why)) shows which dependencies hold the ranges involved.
 
-The backtracking solver sits behind `install::Resolver`. A PubGrub implementation (incompatibilities, unit propagation, conflict-driven clause learning, derivation-tree explanations) will replace it without changing callers. It MUST return a solution whenever one exists. It may pick a different solution than the backtracking solver only when neither is pinned by the lock.
+### 4.4 Guarantees
+
+- Resolution finds a solution whenever one exists. It fails only when none does, and then the explanation of §4.3 is a proof of that.
+- The project's own requirements are never changed or ignored. Overrides (*0.4.3*) will be the explicit way to do that.
+- The lockfile's versions are kept whenever they still fit (§4.5). The backtracking solver of CPM 0.4.1 and earlier gives the same result whenever the lockfile pins every package. Without a lockfile, the two may choose different solutions, both valid. Both prefer higher versions, but they decide packages in a different order.
 
 ### 4.5 Interaction with the lockfile
 

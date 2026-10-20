@@ -62,13 +62,13 @@ TEST(reports_unsatisfiable_ranges) {
     package(w / "b", "b", "1.2.0");
     package(w / "c", "c", "3.0.0", R"(, "dependencies": { "b": "^2.0.0" })");
     auto m = root_manifest(w / "app", R"({ "b": "file:../b", "c": "file:../c" })");
-    CHECK_THROWS(resolve(w / "app", m), "no version of \"b\" satisfies every constraint");
+    CHECK_THROWS(resolve(w / "app", m), "the project's dependencies can't be resolved");
     try {
         resolve(w / "app", m);
     } catch (const Error& e) {
         std::string what = e.what();
-        CHECK(what.contains("b ^2.0.0   required by c@3.0.0"));
-        CHECK(what.contains("available: 1.2.0"));
+        CHECK(what.contains("c 3.0.0 (path ../c) depends on b ^2.0.0, which doesn't match b 1.2.0 (path ../b)"));
+        CHECK_EQ(e.hint(), "change the range of b or c in cpm.jsonc; cpm info <package> shows what each version depends on");
     }
 }
 

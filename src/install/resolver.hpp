@@ -21,9 +21,9 @@ struct Resolution {
     std::vector<std::string> order;                   // dependency order: every package before its dependencies
 };
 
-// Flat resolution (docs/spec/dependencies.md §4.2): every package name gets exactly one version that
+// Flat resolution with PubGrub (docs/spec/dependencies.md §4.2): every package name gets exactly one version that
 // satisfies every constraint on it. Locked versions (and git commits) are preferred when they still fit.
-// Throws cpm::Error with the conflicting constraints when no solution exists.
+// Throws cpm::Error explaining why when no solution exists (§4.3).
 Resolution resolve(const manifest::Manifest& root, Sources& sources, const lock::Lockfile* lock);
 
 }  // namespace cpm::install

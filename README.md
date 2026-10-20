@@ -194,7 +194,7 @@ flowchart LR
     C --> N["Ninja"] --> B["build/debug/hello"]
 ```
 
-1. **Resolve.** Every package gets exactly one version, which avoids ODR violations. The choice is saved in `cpm-lock.json`.
+1. **Resolve.** Every package gets exactly one version, which avoids ODR violations. The choice is saved in `cpm-lock.json`. When the version ranges can't all be met, CPM explains why, step by step.
 2. **Fetch.** Sources go into a global store, `~/.cpm/store`, checked against the hashes in the lockfile.
 3. **Build once.** Each library is compiled once per *ABI fingerprint*: compiler, standard library, C++ standard, flags and platform. Every project with the same fingerprint reuses the result.
 4. **Link.** `cpm_modules/` in your project points into the store, and CPM writes a `build.ninja` for your code.
@@ -218,9 +218,10 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - a shared build cache, with prebuilt binaries when a registry offers them;
 - publishing, searching the registry, and finding outdated dependencies;
 - inspecting packages and dependency graphs (`cpm info`, `cpm tree`, `cpm why`), and cleaning the store (`cpm cache`);
+- version conflicts explained step by step, by a PubGrub resolver;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** clearer version conflicts and overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.2.
+**Next, on the [road to 0.5.0](ROADMAP.md):** version overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.3.
 
 ## Documentation
 

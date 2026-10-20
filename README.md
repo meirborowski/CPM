@@ -216,16 +216,13 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - publishing, searching the registry, and finding outdated dependencies;
 - a one-command install that also sets up a compiler and Ninja.
 
-**On the roadmap:**
-- MSVC support;
-- building CMake-based libraries directly (the "Legacy Bridge");
-- prebuilt binaries for registry packages;
-- workspaces.
+**Next, on the [road to 0.5.0](ROADMAP.md):** commands to inspect your dependencies, clearer version conflicts and overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.1.
 
 ## Documentation
 
 - [Specification](docs/spec/README.md): the manifest, dependencies, the lockfile, the store, ABI fingerprints, the build, the registry protocol and the CLI
-- [Architecture and roadmap](docs/spec/architecture.md)
+- [Roadmap](ROADMAP.md): the releases planned up to 0.5.0
+- [Architecture](docs/spec/architecture.md): CPM's design, modules and milestones
 - [Changelog](CHANGELOG.md): what each release changed
 - [Contributing](CONTRIBUTING.md): building CPM from source, the tests, and releases
 

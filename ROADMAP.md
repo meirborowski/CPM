@@ -7,7 +7,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 | Release | Theme | In short |
 |---|---|---|
 | 0.4.1 | Everyday commands | `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (released 2026-10-20) |
-| 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together |
+| 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together (released 2026-10-20) |
 | 0.4.3 | Version overrides | Force a version when you know a dependency works with it |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command |
 | 0.4.5 | C sources | Compile `.c` files, so C libraries can be packaged |
@@ -47,7 +47,7 @@ Done when all four are specified in cli.md and tested, including against a regis
 
 ## 0.4.2: Clearer conflicts
 
-Replace the backtracking resolver with PubGrub, as [dependencies.md §4.4](docs/spec/dependencies.md#44-pubgrub-post-mvp) already plans.
+Replace the backtracking resolver with PubGrub, as planned in [dependencies.md](docs/spec/dependencies.md#42-algorithm).
 
 - It finds a solution whenever one exists, and stays fast on large graphs, where backtracking can try many dead ends.
 - When no solution exists, it explains why as a chain of reasons. For example: "spdlog 1.12 and later need fmt ^9, and your project needs fmt ^10, so no spdlog from 1.12 on can be used. Your project needs spdlog ^1.12, so these requirements can't be met." It then suggests ways out: relaxing a range, an older version of a dependency, or an override (0.4.3).

@@ -2,6 +2,29 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.2 — 2026-10-20
+
+When versions can't fit together, CPM now says why.
+
+### New
+
+- **A new resolver.** CPM picks versions with PubGrub, the algorithm behind Dart's pub and uv. It learns from each conflict instead of retrying combinations that are known to fail, so it stays fast on large dependency graphs, and it finds a solution whenever one exists.
+- **Conflicts are explained** as a chain of reasons that ends at your project, followed by a hint that names the ranges in your `cpm.jsonc` that are involved:
+
+  ```
+  error: the project's dependencies can't be resolved
+    Because spdlog >=1.12.0 depends on fmt ^9.1.0 and the project depends on fmt ^10.2.0, spdlog >=1.12.0 can't be used.
+    So, because the project depends on spdlog ^1.12.0, no versions satisfy every requirement.
+    hint: change the range of fmt or spdlog in cpm.jsonc; cpm info <package> shows what each version depends on
+  ```
+
+  A range that matches nothing says which versions exist, and a path or git package says which version it has.
+
+### Changed
+
+- A package version that depends on a package its registry doesn't have is now skipped, and CPM uses another version. Before, installing failed.
+- Results don't change otherwise: the versions in `cpm-lock.json` are kept while they still fit, and the same inputs always give the same result. With no lockfile, CPM may now choose a different set of versions than 0.4.1 would have, when more than one set works.
+
 ## 0.4.1 — 2026-10-20
 
 See what you depend on and why, and keep `~/.cpm` tidy.

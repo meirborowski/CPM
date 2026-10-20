@@ -17,6 +17,10 @@ std::string replace_all(std::string text, std::string_view from, std::string_vie
 // Number of Unicode code points in a UTF-8 string (invalid bytes count as one each).
 std::size_t utf8_length(std::string_view text);
 
+// Text from elsewhere (a registry service, a manifest), made safe for a terminal: trimmed, with control characters
+// (escape sequences, line breaks) turned into spaces.
+std::string printable(std::string_view text);
+
 #ifdef _WIN32
 std::wstring widen(std::string_view utf8);
 std::string narrow(std::wstring_view wide);

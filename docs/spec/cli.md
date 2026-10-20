@@ -187,6 +187,111 @@ spdlog   1.17.0   1.17.0  2.0.0
 
 The table goes to stdout. Path and git dependencies are skipped with a note on stderr, since they have no registry versions to compare. Indexes are read like `cpm install` reads them ([registry.md §5](registry.md#5-client-behaviour)), and a dependency whose registry has no such package is an error. The exit code is 0 whether or not something is outdated.
 
+### `cpm info`
+
+```
+cpm info <name>[@<range>] [--registry <name|url>]
+```
+
+Shows a package on a registry without installing it. Without `--registry` it uses the default registry. With a range, CPM shows the version resolution would pick for that range (the "Wanted" of `cpm outdated`). Without one, it shows the newest version (its "Latest"). On stdout:
+
+```
+$ cpm info spdlog
+spdlog 1.17.0 · static library · C++11 · MIT
+Fast C++ logging library, compiled, using the fmt package
+
+repository    https://github.com/gabime/spdlog
+owners        meirborowski
+downloads     6
+dependencies  fmt ^12.2.0
+versions      1.17.0 (latest), 1.16.0, 1.15.3 (yanked)
+
+install with  cpm install spdlog
+```
+
+- The first line has the version shown, its library type, its C++ standard and, when known, its license. Next comes the description, when known.
+- The details come from the version shown: its dependencies and their ranges ("none" when it has none). The versions follow, newest first, with yanked ones marked. At most 20 are listed, followed by how many more there are.
+- The index document ([registry.md §3](registry.md#3-index-documents)) gives the versions, types, standards and dependencies. A registry service ([registry.md §7.5](registry.md#75-browsing)) adds the description, license, repository, homepage (shown when it differs from the repository), owners and downloads. For a static registry those lines are left out. They are also left out, with a warning, when the service can't be reached.
+- Long lists wrap at 80 columns, aligned under their first item. The last line is the command that adds the package, with the range and `--registry` when they were given.
+- A package the registry doesn't have, and a range no unyanked version satisfies, are errors.
+
+### `cpm tree`
+
+```
+cpm tree [--depth <n>] [--prod]
+```
+
+Prints the project's resolved dependencies from `cpm-lock.json` on stdout, as a tree. The project is at the top, and each package sits under the package that requires it:
+
+```
+$ cpm tree
+hello 0.1.0
+├── fmt 12.2.0
+├── spdlog 1.17.0
+│   └── fmt 12.2.0 (*)
+└── doctest 2.4.11 (dev)
+```
+
+- Every package appears with the one version the project uses ([dependencies.md §4.1](dependencies.md#41-model)).
+- A package already expanded higher up is marked `(*)` and not expanded again.
+- Git and path dependencies show their source: `(git <url>#<ref>)` or `(path <path>)`. devDependencies are marked `(dev)`.
+- `--depth <n>` shows `n` levels; `--depth 1` shows only direct dependencies. `--prod` leaves out devDependencies.
+- Without a `cpm-lock.json` there's nothing to show, so it's an error that suggests `cpm install`. When the lockfile is out of date, a note on stderr says so.
+
+### `cpm why`
+
+```
+cpm why <name>
+```
+
+Shows why a package is in the project: every chain of dependencies that leads from the project to it, read from `cpm-lock.json`. On stdout, as a tree that starts at the package and goes up through the packages that require it. Each step gives the range the dependent asks for:
+
+```
+$ cpm why fmt
+fmt 12.2.0
+├── ^12.2.0 from hello 0.1.0 (the project)
+└── ^12.2.0 from spdlog 1.17.0
+    └── ^1.17.0 from hello 0.1.0 (the project)
+```
+
+- The project's ranges come from its `cpm.jsonc`. A dependency's ranges come from its manifest: in the store, or in its directory for a path dependency. When that manifest isn't on this machine, for example before `cpm install` has run, the step shows the locked version instead of a range.
+- devDependencies of the project are marked `(dev)`.
+- A dependent already shown higher up is marked `(*)` and not followed again, so the output stays small in graphs with many shared dependencies.
+- A package that isn't in `cpm-lock.json` is an error.
+
+When a conflict stops `cpm install`, `cpm why` on the installed packages shows which dependencies hold the ranges involved.
+
+### `cpm cache`
+
+```
+cpm cache
+cpm cache clean [--dry-run] [--all]
+```
+
+`cpm cache` shows on stdout what CPM keeps in `$CPM_HOME` and the space it takes:
+- the store's packages and the libraries built in it;
+- the downloaded archives and the git mirrors;
+- the projects CPM knows ([store.md §8](store.md#8-cleaning-up));
+- how much of all that no known project uses.
+
+```
+$ cpm cache
+home       C:/Users/me/.cpm
+store      6 packages, 9 built libraries, 41.2 MB
+downloads  6 archives, 3.1 MB
+git        2 mirrors, 12.0 MB
+projects   3
+unused     2 packages, 1 archive, 5.4 MB (cpm cache clean removes them)
+```
+
+`cpm cache clean` removes the store entries, downloaded archives and git mirrors that no known project's `cpm-lock.json` uses, with stale temporary files. It also forgets projects whose directory or `cpm.jsonc` is gone. It reports what it removed and the space it freed.
+
+- `--dry-run` lists what would be removed, and removes nothing.
+- Something another `cpm` process is using at that moment, such as a package it is building, is kept, with a warning.
+- `--all` empties the store, `cache/`, `tmp/` and `logs/`. It keeps the configuration, sign-ins, `tools/` (the compilers and Ninja from `cpm setup`), and CPM itself.
+
+Removing something a project still needs costs a rebuild, never a broken project: its next `cpm install` or `cpm build` downloads and builds it again.
+
 ### `cpm publish`
 
 ```
@@ -262,14 +367,14 @@ Only the first page of 20 matches is shown. When there are more, a note on stder
 
 ### Reserved command names (*post-MVP*)
 
-`info`, `why`, `store` (`prune`, `status`), `clean`, `fmt`, `workspace`.
+`clean`, `fmt`, `workspace`, `toolchain`.
 
 ## 4. Output
 
 Normative:
 
 - CPM's status messages, warnings, errors and the build tool's output go to **stderr**.
-- **stdout** is reserved for requested data: `--version`, `--help`, the results of `cpm search`, `cpm outdated`, `cpm whoami` and `cpm owner list`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
+- **stdout** is reserved for requested data: `--version`, `--help`, the results of `cpm search`, `cpm outdated`, `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (without `clean`), `cpm whoami` and `cpm owner list`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
 - Diagnostics follow [architecture.md §5](architecture.md#5-errors-and-diagnostics).
 
 Non-normative, recommended style (status verb right-aligned to 12 columns, bold green when colour is on):

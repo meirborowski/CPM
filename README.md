@@ -139,15 +139,18 @@ hello/
 | `cpm install` | Install everything in `cpm.jsonc` exactly as `cpm-lock.json` says |
 | `cpm update [pkg…]` (`up`) | Move dependencies to the newest versions their ranges allow |
 | `cpm outdated` | List dependencies with newer versions: current, wanted by the range, and latest |
+| `cpm tree` · `cpm why <pkg>` | Show the resolved dependencies as a tree, or what pulls a package in |
 | `cpm remove <pkg>` (`rm`) | Remove dependencies |
 | `cpm build [--release]` | Compile into `build/debug/` or `build/release/` |
 | `cpm run [script] [-- args]` | Build and run the program, or run a script from `cpm.jsonc` |
 | `cpm test [filter]` | Build and run the test programs in `tests/` |
 | `cpm search <query>` | Find packages on the registry |
+| `cpm info <pkg>[@<range>]` | Show a package on the registry: description, license, versions and dependencies |
 | `cpm login` · `cpm logout` · `cpm whoami` | Sign in to the registry with GitHub |
 | `cpm publish [--dry-run]` | Publish this library to the registry |
 | `cpm yank <pkg>@<ver>` | Hide a published version from new installs |
 | `cpm owner list\|add\|remove` | Manage who can publish a package |
+| `cpm cache [clean]` | Show what's in `~/.cpm` and its size, or remove what no project uses |
 
 Run `cpm <command> --help` for every option.
 
@@ -214,9 +217,10 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - registry, git and path dependencies;
 - a shared build cache, with prebuilt binaries when a registry offers them;
 - publishing, searching the registry, and finding outdated dependencies;
+- inspecting packages and dependency graphs (`cpm info`, `cpm tree`, `cpm why`), and cleaning the store (`cpm cache`);
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** commands to inspect your dependencies, clearer version conflicts and overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.1.
+**Next, on the [road to 0.5.0](ROADMAP.md):** clearer version conflicts and overrides, choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.2.
 
 ## Documentation
 

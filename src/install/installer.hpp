@@ -5,6 +5,7 @@
 
 #include "build/pipeline.hpp"
 #include "build/plan.hpp"
+#include "lock/lockfile.hpp"
 #include "manifest/config.hpp"
 
 namespace cpm::install {
@@ -33,5 +34,9 @@ std::vector<build::Dependency> install(build::Project& project, const Options& o
 // For `cpm build`, `cpm test` and `cpm run`: the dependencies, installing first when cpm-lock.json is
 // missing or stale, and relinking when cpm_modules does not match it.
 std::vector<build::Dependency> ensure(const build::Project& project, const manifest::UserConfig& config);
+
+// The current manifest of a path package of the lockfile, with the overlay the project's manifest gives it.
+manifest::Manifest path_package_manifest(const std::filesystem::path& root_dir, const manifest::Manifest& root,
+                                         const lock::Package& package);
 
 }  // namespace cpm::install

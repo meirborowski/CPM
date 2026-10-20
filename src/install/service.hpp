@@ -66,4 +66,19 @@ SearchResult search(Registry& registry, std::string_view query, const fs::path& 
 // The body of a search response; throws cpm::Error when it is not one.
 SearchResult parse_search(const json::Value& body);
 
+// What a registry service knows about a package beyond its index document (registry.md §7.5), for `cpm info`.
+struct PackageDetails {
+    // Every member has a default so callers can use designated initializers for the ones they need.
+    std::string description{}, license{}, repository{}, homepage{};  // "" when unknown
+    std::vector<std::string> owners{};
+    std::optional<std::int64_t> downloads{};  // of every version
+};
+
+// GET packages/<name> on the registry's service. nullopt for a static registry, and when the service has no such
+// package; throws cpm::Error when the service fails.
+std::optional<PackageDetails> details(Registry& registry, std::string_view name, const fs::path& home);
+
+// The body of a package details response; missing or mistyped fields are left empty.
+PackageDetails parse_details(const json::Value& body);
+
 }  // namespace cpm::install::service

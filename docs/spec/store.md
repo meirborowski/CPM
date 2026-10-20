@@ -180,6 +180,38 @@ Links into the store make naive recursive deletion **dangerous**. Some standard 
 - `fsx::remove_tree` refuses to delete `$CPM_HOME`, `$CPM_HOME/store`, the filesystem root, or the user's home directory.
 - Removing a link never touches its target.
 
-## 8. Garbage collection (*post-MVP*)
+## 8. Cleaning up
 
-`cpm store prune` deletes entries that no registered project references. Projects register themselves in `$CPM_HOME/projects.json` on every install, and prune removes registrations for project directories that no longer exist. `cpm store status` reports sizes and verifies integrity.
+The store keeps every package any project ever used, so it grows. `cpm cache clean` ([cli.md](cli.md#cpm-cache)) removes what no project uses any more. CPM knows which projects use the store because they register themselves.
+
+### 8.1 `projects.json`
+
+```json
+{
+  "projectsVersion": 1,
+  "projects": {
+    "C:/work/hello": { "lastUsed": "2026-10-20" }
+  }
+}
+```
+
+`cpm install` and `cpm build` record the project's root in `$CPM_HOME/projects.json`. That covers every command that installs or links dependencies. The path is absolute, normalized and `/`-separated. CPM writes the file only when the project is new or its `lastUsed` (UTC date) is older than today. It writes atomically, under the lock `locks/<sha256("projects.json")[:16]>.lock`. A project that has not run `cpm install` or `cpm build` since CPM began registering (0.4.1) is unknown.
+
+### 8.2 What a project uses
+
+For each package in a project's `cpm-lock.json` other than path packages:
+- its store entry (§2.1);
+- for a registry package, its archive in `cache/downloads/` (`sha256-<hex>.tar.gz`, the hex of its integrity);
+- for a git package, its mirror in `cache/git/` (§3).
+
+### 8.3 `cpm cache clean`
+
+1. Registrations whose directory or `cpm.jsonc` no longer exists are removed.
+2. Every store entry, downloaded archive and git mirror that no remaining project uses (§8.2) is deleted. Entries without `.complete` are garbage and go too.
+   - A store entry is deleted under its lock and the locks of its `lib/<abi16>` directories (§4); a git mirror under its mirror lock. CPM only tries the locks: an item whose lock another process holds is kept, and reported.
+   - A store entry or mirror is first renamed into `tmp/`, so it disappears in one step, and then deleted there through `fsx::remove_tree` (§7). One that cannot be renamed, because its files are open, is kept.
+3. `tmp/` directories older than 24 hours are deleted.
+
+`--all` deletes every store entry (not `store/` itself, which §7 protects), and everything under `cache/`, `tmp/` and `logs/`, under the same locks. It never touches `config.jsonc`, `credentials.json`, `projects.json`, `toolchains.json`, `tools/` or `bin/`.
+
+Deleting a store entry or a cached download that a project still needs, including a project CPM doesn't know, only costs a rebuild. Its next `cpm install` or `cpm build` finds the entry missing and makes it again (§2.3), which may need network access for registry and git packages.

@@ -13,6 +13,7 @@
 #include "core/log.hpp"
 #include "core/paths.hpp"
 #include "core/sha256.hpp"
+#include "install/cache.hpp"
 #include "install/dep_builder.hpp"
 #include "install/git.hpp"
 #include "install/fetch.hpp"
@@ -497,6 +498,7 @@ std::vector<build::Dependency> install(build::Project& project, const Options& o
         build::reload_manifest(project);
     }
     if (!options.frozen) lock::save(root, new_lock);
+    cache::register_project(project.home, root);
     for (const auto& c : changes) log::status("Updated", std::format("cpm.jsonc: {}", c));
 
     report(old_lock, new_lock, std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count());
@@ -526,7 +528,12 @@ std::vector<build::Dependency> ensure(const build::Project& project, const manif
     if (!modules_current(project.root, hash, project.abi.dir())) {
         link_modules(project.root, mat.links, hash, project.abi.dir(), link_mode(config));
     }
+    cache::register_project(project.home, project.root);
     return mat.dependencies;
+}
+
+manifest::Manifest path_package_manifest(const fs::path& root_dir, const manifest::Manifest& root, const lock::Package& package) {
+    return path_manifest(root_dir, root, package);
 }
 
 }  // namespace cpm::install

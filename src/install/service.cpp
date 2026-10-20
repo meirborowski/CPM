@@ -200,4 +200,29 @@ SearchResult search(Registry& registry, std::string_view query, const fs::path& 
     return parse_search(expect(r, {200}));
 }
 
+PackageDetails parse_details(const json::Value& body) {
+    auto text = [&](std::string_view key) {
+        const json::Value* m = body.find(key);
+        return m && m->is_string() ? m->as_string() : std::string();
+    };
+    PackageDetails d{text("description"), text("license"), text("repository"), text("homepage"), {}, std::nullopt};
+    if (const json::Value* owners = body.find("owners"); owners && owners->is_array()) {
+        for (const auto& o : owners->as_array()) {
+            if (o.is_string()) d.owners.push_back(o.as_string());
+        }
+    }
+    if (const json::Value* downloads = body.find("downloads"); downloads && downloads->is_object()) {
+        if (const json::Value* total = downloads->find("total"); total && total->is_int()) d.downloads = total->as_int();
+    }
+    return d;
+}
+
+std::optional<PackageDetails> details(Registry& registry, std::string_view name, const fs::path& home) {
+    const auto& api = registry.api();
+    if (!api) return std::nullopt;
+    Response r = send({.url = *api + "packages/" + url::encode(name), .allow_http = registry.allow_http()}, home);
+    if (r.status == 404) return std::nullopt;
+    return parse_details(expect(r, {200}));
+}
+
 }  // namespace cpm::install::service

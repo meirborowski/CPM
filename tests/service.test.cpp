@@ -88,3 +88,35 @@ TEST(static_registries_cannot_be_searched) {
     install::Registry registry(reg.url(), false, t.path() / "home", install::Freshness::Online);
     CHECK_THROWS(install::service::search(registry, "fmt", t.path() / "home"), "is a static registry, which cannot be searched");
 }
+
+TEST(package_details_are_parsed) {
+    auto body = json::parse(R"({
+        "name": "spdlog", "description": "Fast C++ logging library", "license": "MIT",
+        "repository": "https://github.com/gabime/spdlog", "homepage": null, "readme": "# spdlog",
+        "owners": ["alice", 7, "bob"], "dependents": [],
+        "downloads": { "total": 42, "daily": [], "versions": { "1.17.0": 42 } },
+        "versions": [{ "version": "1.17.0", "yanked": false }]
+    })", json::kStrict);
+    auto d = install::service::parse_details(body);
+    CHECK_EQ(d.description, "Fast C++ logging library");
+    CHECK_EQ(d.license, "MIT");
+    CHECK_EQ(d.repository, "https://github.com/gabime/spdlog");
+    CHECK_EQ(d.homepage, "");  // null is unknown
+    CHECK_EQ(d.owners.size(), 2u);  // what is not a login is skipped
+    CHECK(d.downloads.has_value() && *d.downloads == 42);
+    auto empty = install::service::parse_details(json::parse("{}", json::kStrict));
+    CHECK(empty.owners.empty() && !empty.downloads.has_value() && empty.license.empty());
+}
+
+TEST(package_details_come_only_from_a_service) {
+    check::TempDir t;
+    fixture::Registry reg(t.path() / "registry");
+    reg.publish("fmt", "1.0.0", {{"include/fmt.hpp", "#pragma once\n"}}, fixture::entry("header-only"));
+    install::Registry registry(reg.url(), false, t.path() / "home", install::Freshness::Online);
+    CHECK(!install::service::details(registry, "fmt", t.path() / "home").has_value());
+
+    // With a service, CPM asks for packages/<name>: refused here before anything is sent, since it is plain http.
+    fixture::write(reg.root / "config.json", R"({ "apiVersion": 1, "api": "http://127.0.0.1:9/api/v1" })");
+    install::Registry with_api(reg.url(), false, t.path() / "home2", install::Freshness::Online);
+    CHECK_THROWS(install::service::details(with_api, "fmt", t.path() / "home2"), "http://127.0.0.1:9/api/v1/packages/fmt over plain http");
+}

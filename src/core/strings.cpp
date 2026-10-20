@@ -94,6 +94,12 @@ std::size_t utf8_length(std::string_view text) {
     return n;
 }
 
+std::string printable(std::string_view text) {
+    std::string out(trim(text));
+    std::replace_if(out.begin(), out.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7f; }, ' ');
+    return out;
+}
+
 #ifdef _WIN32
 std::wstring widen(std::string_view utf8) {
     if (utf8.empty()) return {};

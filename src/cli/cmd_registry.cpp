@@ -127,13 +127,6 @@ std::pair<std::string, std::string> name_at_version(const std::string& spec) {
     return {spec.substr(0, at), spec.substr(at + 1)};
 }
 
-// Text from a service, made safe for a terminal: control characters (escape sequences, line breaks) become spaces.
-std::string printable(std::string_view text) {
-    std::string out(str::trim(text));
-    std::replace_if(out.begin(), out.end(), [](char c) { return static_cast<unsigned char>(c) < 0x20 || c == 0x7f; }, ' ');
-    return out;
-}
-
 }  // namespace
 
 int cmd_login(const ParsedArgs& args, Context&) {
@@ -223,12 +216,12 @@ int cmd_search(const ParsedArgs& args, Context&) {
     // Names right-aligned like the verbs of status lines, then the latest version and the description.
     std::size_t name_width = 12, version_width = 1;
     for (const auto& p : result.packages) {
-        name_width = std::max(name_width, printable(p.name).size());
-        version_width = std::max(version_width, printable(p.latest).size());
+        name_width = std::max(name_width, str::printable(p.name).size());
+        version_width = std::max(version_width, str::printable(p.latest).size());
     }
     for (const auto& p : result.packages) {
-        std::string latest = p.latest.empty() ? "-" : printable(p.latest);
-        std::string line = std::format("{:>{}} {:<{}}  {}", printable(p.name), name_width, latest, version_width, printable(p.description));
+        std::string latest = p.latest.empty() ? "-" : str::printable(p.latest);
+        std::string line = std::format("{:>{}} {:<{}}  {}", str::printable(p.name), name_width, latest, version_width, str::printable(p.description));
         line.erase(line.find_last_not_of(' ') + 1);  // no description
         log::out(line + "\n");
     }

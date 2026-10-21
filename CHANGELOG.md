@@ -2,6 +2,26 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.4 — 2026-10-21
+
+Choose the compiler on purpose, and see which one every build uses.
+
+### New
+
+- **`cpm toolchain list`** shows every compiler CPM finds: on `PATH` (including versioned ones such as `g++-14` and `clang++-18`), the ones `cpm setup` installed, MSYS2's on Windows, and Homebrew's LLVM on macOS. It shows each one's version and path, why CPM can't use it when it can't, and marks the one a build here would use.
+- **Choose a compiler** with a *request*, a family and an optional version range such as `gcc`, `clang >=18` or `gcc 14`, or with a compiler's name or path:
+  - for the machine: `cpm toolchain use clang`, saved in `~/.cpm/config.jsonc`. `cpm toolchain use auto` goes back to automatic;
+  - for a project: `"toolchain": "gcc >=14"` in `cpm.jsonc`, or several requests in order of preference, `["gcc >=14", "clang >=18"]`;
+  - for one command: `--toolchain clang` on `cpm build`, `run`, `test`, `install`, `update` and `remove`. `--cxx` still works.
+
+  The order is: the command line, then `CXX`, then the project, then the machine, then automatic. A request picks the newest compiler that matches. When nothing on the machine matches, CPM lists what it found and says how to get one.
+- **Every build says which compiler it uses and why:** `Compiling hello v0.1.0 (debug, gcc 14.2.0, from cpm.jsonc)`.
+- **`cpm setup --compiler gcc|clang`** installs that compiler and makes it the machine's choice: the distribution's newest GCC or Clang package on Linux, Homebrew's on macOS, and WinLibs GCC on Windows. Clang on Windows isn't offered yet; CPM suggests llvm-mingw or MSYS2's.
+
+### Also
+
+- When `--toolchain` or `CXX` choose a compiler that the project's `"toolchain"` doesn't ask for, CPM warns and builds with it anyway, so a project can still be tried with other compilers.
+
 ## 0.4.3 — 2026-10-20
 
 When you know a dependency works with a version its range doesn't allow, say so in your project.

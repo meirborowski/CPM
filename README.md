@@ -19,8 +19,9 @@ One manifest. A lockfile. Dependencies built once and shared. No CMake.
 
 ```sh
 cpm init -y hello && cd hello
-cpm install fmt
 cpm run
+cpm install -D cpm-test
+cpm test
 ```
 
 ## Why CPM?
@@ -80,27 +81,35 @@ cpm init -y hello        # an executable; also --lib, --shared-lib, --header-onl
 cd hello
 ```
 
-Add a library from the registry:
-
-```sh
-cpm install fmt
-```
-
-Use it in `src/main.cpp`:
-
-```cpp
-#include <fmt/format.h>
-
-int main() {
-    fmt::print("Hello from {}!\n", "CPM");
-}
-```
-
 Build and run:
 
 ```sh
 cpm run
-# Hello from CPM!
+# Hello, world!
+```
+
+Add a library from the registry. [cpm-test](https://cpm-registry.com/package/cpm-test) is a unit-test framework, and `-D` makes it a dev dependency, which only the tests use:
+
+```sh
+cpm install -D cpm-test
+```
+
+Use it in `tests/greeting.test.cpp`, replacing the test `cpm init` wrote:
+
+```cpp
+#include <cpm/test.hpp>
+
+#include "greeting.hpp"
+
+TEST_CASE("greeting") {
+    CHECK(hello::greeting("CPM") == "Hello, CPM!");
+}
+```
+
+The test needs no `main()`; cpm-test has one. Build and run the tests:
+
+```sh
+cpm test
 ```
 
 `cpm install` added the dependency to `cpm.jsonc`. CPM edits the file in place and keeps your comments; the template `cpm init` writes explains every field. Trimmed down, it looks like this:
@@ -112,8 +121,8 @@ cpm run
   // The C++ standard this package, and everything built for it, is compiled with.
   "std": "c++23",
   "type": "executable",
-  "dependencies": {
-    "fmt": "^12.2.0"
+  "devDependencies": {
+    "cpm-test": "^0.1.0"
   }
 }
 ```
@@ -136,7 +145,7 @@ hello/
 | `cpm setup [--check]` | Install a C++ compiler and Ninja if they're missing, or just report what's there |
 | `cpm toolchain list` · `use <choice>` | List the compilers CPM finds, or choose one for this machine: `cpm toolchain use clang` |
 | `cpm init [dir]` | Create a project: executable, static or shared library, or header-only |
-| `cpm install <pkg>` (`i`, `add`) | Add dependencies: `fmt`, `fmt@^12`, `../mylib`, `git+https://…#v1.0` |
+| `cpm install <pkg>` (`i`, `add`) | Add dependencies: `cpm-test`, `cpm-test@^0.1`, `../mylib`, `git+https://…#v1.0` |
 | `cpm install` | Install everything in `cpm.jsonc` exactly as `cpm-lock.json` says |
 | `cpm update [pkg…]` (`up`) | Move dependencies to the newest versions their ranges allow |
 | `cpm outdated` | List dependencies with newer versions: current, wanted by the range, and latest |
@@ -157,7 +166,7 @@ Run `cpm <command> --help` for every option.
 
 ## The registry
 
-[**cpm-registry.com**](https://cpm-registry.com) is CPM's default registry. Search it, read package pages, and copy install commands. To start with it holds [fmt](https://cpm-registry.com/package/fmt), [spdlog](https://cpm-registry.com/package/spdlog), [nlohmann-json](https://cpm-registry.com/package/nlohmann-json), [doctest](https://cpm-registry.com/package/doctest), [Catch2](https://cpm-registry.com/package/catch2) and [CLI11](https://cpm-registry.com/package/cli11).
+[**cpm-registry.com**](https://cpm-registry.com) is CPM's default registry. Search it, read package pages, and copy install commands. CPM's own libraries are written for it from scratch, one repository each in [cpm-org](https://github.com/cpm-org). The first is [cpm-test](https://cpm-registry.com/package/cpm-test), a unit-test framework.
 
 **Publish your own library:**
 

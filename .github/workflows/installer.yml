@@ -94,21 +94,26 @@ jobs:
           command -v cpm
           cpm --version
           cpm setup --check
-      - name: Create a project that uses fmt
+      # cpm test is the registry check: the test builds only with cpm-test from the registry, built on this runner.
+      - name: Create a project that tests with cpm-test
         run: |
           cpm init -y hello
           cd hello
-          cpm install fmt
-          cat > src/main.cpp <<'EOF'
-          #include <fmt/format.h>
+          cpm install -D cpm-test
+          cat > tests/greeting.test.cpp <<'EOF'
+          #include <cpm/test.hpp>
 
-          int main() { fmt::print("Hello from {}!\n", "CPM"); }
+          #include "greeting.hpp"
+
+          TEST_CASE("greeting") {
+              CHECK(hello::greeting("CPM") == "Hello, CPM!");
+          }
           EOF
       - name: cpm run and cpm test
         working-directory: hello
         run: |
           cpm run | tee run.txt
-          grep -qF 'Hello from CPM!' run.txt
+          grep -qF 'Hello, world!' run.txt
           cpm test
 
       - name: What the registry answers this runner
@@ -169,24 +174,29 @@ jobs:
           (Get-Command cpm).Source
           cpm --version
           cpm setup --check
-      - name: Create a project that uses fmt
+      # cpm test is the registry check: the test builds only with cpm-test from the registry, built on this runner.
+      - name: Create a project that tests with cpm-test
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           cpm init -y hello
           Set-Location hello
-          cpm install fmt
+          cpm install -D cpm-test
           @'
-          #include <fmt/format.h>
+          #include <cpm/test.hpp>
 
-          int main() { fmt::print("Hello from {}!\n", "CPM"); }
-          '@ | Set-Content src/main.cpp
+          #include "greeting.hpp"
+
+          TEST_CASE("greeting") {
+              CHECK(hello::greeting("CPM") == "Hello, CPM!");
+          }
+          '@ | Set-Content tests/greeting.test.cpp
       - name: cpm run and cpm test
         working-directory: hello
         run: |
           $PSNativeCommandUseErrorActionPreference = $true
           $out = cpm run
           $out
-          if (-not ($out -match 'Hello from CPM!')) { throw 'cpm run did not print "Hello from CPM!"' }
+          if (-not ($out -match 'Hello, world!')) { throw 'cpm run did not print "Hello, world!"' }
           cpm test
 
       - name: What the registry answers this runner

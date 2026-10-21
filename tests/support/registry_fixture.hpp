@@ -11,6 +11,7 @@
 #include "core/fsx.hpp"
 #include "core/paths.hpp"
 #include "core/proc.hpp"
+#include "core/system_tar.hpp"
 #include "install/fetch.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
@@ -25,10 +26,13 @@ inline void write(const fs::path& p, const std::string& text) {
     std::ofstream(p, std::ios::binary) << text;
 }
 
+// The tar CPM extracts with. In Git Bash the first tar on PATH is GNU tar, which reads C:/x as host:path.
+inline std::string tar_program() { return cpm::paths::to_utf8(cpm::system_tar::locate().value_or("tar")); }
+
 // tar -czf <archive> -C <dir> <entry>
 inline void tar_gz(const fs::path& archive, const fs::path& dir, const std::string& entry) {
     fs::create_directories(archive.parent_path());
-    auto r = cpm::proc::capture({.argv = {"tar", "-czf", cpm::paths::to_utf8(archive), "-C", cpm::paths::to_utf8(dir), entry}});
+    auto r = cpm::proc::capture({.argv = {tar_program(), "-czf", cpm::paths::to_utf8(archive), "-C", cpm::paths::to_utf8(dir), entry}});
     if (r.exit_code != 0) throw std::runtime_error("tar failed: " + r.err);
 }
 
@@ -84,7 +88,7 @@ struct Registry {
             if (e.path().filename() != ".complete") fs::copy(e.path(), staging / e.path().filename());
         }
         fs::create_directories(archive.parent_path());
-        auto r = cpm::proc::capture({.argv = {"tar", "-czf", cpm::paths::to_utf8(archive), "-C", cpm::paths::to_utf8(staging), "."}});
+        auto r = cpm::proc::capture({.argv = {tar_program(), "-czf", cpm::paths::to_utf8(archive), "-C", cpm::paths::to_utf8(staging), "."}});
         if (r.exit_code != 0) throw std::runtime_error("tar failed: " + r.err);
         cpm::fsx::remove_tree(staging);
         Value bin = Value::object();

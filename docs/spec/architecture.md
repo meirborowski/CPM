@@ -44,7 +44,7 @@ CPM is a single executable. Source lives in `src/<module>/`, namespace `cpm::<mo
 | `lock/` | `lockfile` | `cpm-lock.json` model, deterministic read and write, freshness check. |
 | `json/` | `value`, `parse`, `write`, `edit` | Order-preserving JSON value with source spans, JSONC parser, deterministic writer, surgical comment-preserving text edits. |
 | `semver/` | `version`, `range` | SemVer 2.0 versions. npm-style ranges as unions of disjoint intervals. |
-| `core/` | `error`, `log`, `proc`, `fsx`, `paths`, `sha256`, `net`, `archive`, `glob`, `term` | Errors and diagnostics, logging and colour, subprocesses, filesystem (atomic writes, links, safe deletion, locks), CPM home paths, hashing, downloads (`curl`), writing deterministic `.tar.gz` archives (tar and DEFLATE implemented in CPM; extraction uses `tar`), globbing, terminal detection. |
+| `core/` | `error`, `log`, `proc`, `fsx`, `paths`, `sha256`, `net`, `archive`, `system_tar`, `glob`, `term` | Errors and diagnostics, logging and colour, subprocesses, filesystem (atomic writes, links, safe deletion, locks), CPM home paths, hashing, downloads (`curl`), writing deterministic `.tar.gz` archives (tar and DEFLATE implemented in CPM), extracting archives with the system `tar` (§3.1), globbing, terminal detection. |
 
 ### 3.1 External processes
 
@@ -55,10 +55,12 @@ CPM has no third-party library dependencies. It drives these programs as subproc
 | C++ compiler (`g++`, `clang++`, `cl`) | probing, compilation (through Ninja) | see [build.md §1](build.md#1-toolchain-discovery) |
 | `ninja` ≥ 1.10 | executing build plans | `CPM_NINJA`, `PATH`, `$CPM_HOME/tools/ninja` |
 | `curl` | `https://` downloads | `PATH` (shipped with Windows 10+, macOS, most Linux distributions) |
-| `tar` | extracting `.tar.gz` archives | `PATH` (bsdtar on Windows 10+/macOS, GNU tar on Linux) |
+| `tar` | extracting `.tar.gz` archives, git archives, and on Windows and macOS `cpm setup`'s `.zip` downloads | Windows: `%SystemRoot%\System32\tar.exe` (bsdtar, shipped since Windows 10 1803), else `PATH`. Elsewhere: `PATH` (bsdtar on macOS, GNU tar on Linux) |
 | `git` | git dependencies | `PATH` |
 
 `file://` URLs are handled natively without `curl`. A missing tool is reported only when an operation actually needs it, with a hint naming the tool.
+
+On Windows the first `tar` on `PATH` is GNU tar inside Git Bash and MSYS2, which reads an archive path such as `C:/x.tar.gz` as `host:path` on a remote machine; hence the fixed location. CPM asks the `tar` it uses for `--version` once per run, and passes `--force-local` when that is GNU tar, so a GNU tar found on `PATH` treats such paths as local files. bsdtar rejects that option and never needs it.
 
 ## 4. Core data structures
 

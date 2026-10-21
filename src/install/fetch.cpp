@@ -11,6 +11,7 @@
 #include "core/proc.hpp"
 #include "core/sha256.hpp"
 #include "core/strings.hpp"
+#include "core/system_tar.hpp"
 #include "install/store.hpp"
 
 namespace cpm::install {
@@ -170,13 +171,7 @@ void reject_links(const fs::path& dir, const std::string& what) {
 }  // namespace
 
 void extract_archive(const fs::path& archive, const fs::path& dest, int strip, const std::string& what) {
-    auto tar = proc::find_program("tar");
-    if (!tar) throw Error("extracting packages needs tar, which was not found on PATH");
-    fsx::create_dirs(dest);
-    std::vector<std::string> argv = {paths::to_utf8(*tar), "-xzf", paths::to_utf8(archive), "-C", paths::to_utf8(dest)};
-    if (strip > 0) argv.push_back(std::format("--strip-components={}", strip));
-    proc::Captured r = proc::capture({.argv = argv});
-    if (r.exit_code != 0) throw Error(std::format("cannot extract {}:\n{}", what, str::trim(r.err)));
+    system_tar::extract({.archive = archive, .dest = dest, .gzip = true, .strip = strip}, what);
     reject_links(dest, what);
 }
 

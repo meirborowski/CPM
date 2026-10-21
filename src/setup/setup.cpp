@@ -12,6 +12,7 @@
 #include "core/paths.hpp"
 #include "core/proc.hpp"
 #include "core/strings.hpp"
+#include "core/system_tar.hpp"
 #include "core/term.hpp"
 #include "install/default_registry.hpp"
 #include "install/fetch.hpp"
@@ -111,16 +112,16 @@ NinjaState inspect_ninja(const fs::path& home) {
 struct State {
     CompilerState compiler;
     NinjaState ninja;
-    bool git = false, curl = false, tar = false;
+    std::optional<fs::path> git, curl, tar;
 };
 
 State inspect(const fs::path& home) {
     State s;
     s.compiler = inspect_compiler(home);
     s.ninja = inspect_ninja(home);
-    s.git = proc::find_program("git").has_value();
-    s.curl = proc::find_program("curl").has_value();
-    s.tar = proc::find_program("tar").has_value();
+    s.git = proc::find_program("git");
+    s.curl = proc::find_program("curl");
+    s.tar = system_tar::locate();  // the tar that extracts packages, which on Windows need not be the first on PATH
     return s;
 }
 
@@ -133,8 +134,8 @@ void report(const State& s) {
     }
     if (s.ninja.usable) log::status("Ninja", std::format("{} ({})", s.ninja.version, paths::to_utf8(*s.ninja.usable)));
     else log::status("Ninja", std::format("{}: {}", missing, s.ninja.problem));
-    for (auto [name, found] : {std::pair{"git", s.git}, std::pair{"curl", s.curl}, std::pair{"tar", s.tar}}) {
-        log::status(name, found ? paths::to_utf8(*proc::find_program(name)) : missing);
+    for (const auto& [name, found] : {std::pair{"git", s.git}, std::pair{"curl", s.curl}, std::pair{"tar", s.tar}}) {
+        log::status(name, found ? paths::to_utf8(*found) : missing);
     }
 }
 
@@ -184,14 +185,12 @@ void download(const std::string& url, const fs::path& dest) {
 }
 
 void unpack_zip(const fs::path& archive, const fs::path& dest) {
-    fsx::create_dirs(dest);
-    std::vector<std::string> argv;
 #if defined(_WIN32) || defined(__APPLE__)
     // Windows 10+ and macOS ship bsdtar, which reads zip files.
-    auto tar = proc::find_program("tar");
-    if (!tar) throw Error("unpacking needs tar, which was not found on PATH");
-    argv = {paths::to_utf8(*tar), "-xf", paths::to_utf8(archive), "-C", paths::to_utf8(dest)};
+    system_tar::extract({.archive = archive, .dest = dest}, paths::to_utf8(archive.filename()));
 #else
+    fsx::create_dirs(dest);
+    std::vector<std::string> argv;
     if (auto unzip = proc::find_program("unzip")) {
         argv = {paths::to_utf8(*unzip), "-q", "-o", paths::to_utf8(archive), "-d", paths::to_utf8(dest)};
     } else if (auto python = proc::find_program("python3")) {
@@ -200,9 +199,9 @@ void unpack_zip(const fs::path& archive, const fs::path& dest) {
     } else {
         throw Error("unpacking a .zip needs unzip or python3", "install unzip with your package manager");
     }
-#endif
     proc::Captured r = proc::capture({.argv = argv});
     if (r.exit_code != 0) throw Error(std::format("cannot unpack {}: {}", paths::to_utf8(archive.filename()), str::trim(r.err)));
+#endif
 }
 
 // Downloads, verifies and unpacks a tool into $CPM_HOME/tools/<dir>-<version>/ (unless it is already there) and

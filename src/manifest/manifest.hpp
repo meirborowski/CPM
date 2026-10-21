@@ -55,6 +55,7 @@ struct Manifest {
     bool is_private = false;
     std::string std = "c++20";
     std::optional<TargetKind> type;
+    std::vector<std::string> toolchain;  // compiler requests, in order of preference (build.md §1.1)
     std::optional<std::string> main;
     std::vector<std::string> sources;  // empty = default globs
     std::string include_dir = "include";

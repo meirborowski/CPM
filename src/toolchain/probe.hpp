@@ -10,14 +10,9 @@
 
 namespace cpm::toolchain {
 
-struct Selection {
-    std::optional<std::string> cli_cxx;     // --cxx
-    std::optional<std::string> config_cxx;  // "cxx" in config.jsonc
-    std::filesystem::path home;             // $CPM_HOME (probe cache, scratch files)
-};
-
-// Picks the compiler (build.md §1.1) and probes it, using $CPM_HOME/toolchains.json as a cache.
-Toolchain find_toolchain(const Selection& selection);
+// Probes the compiler at `cxx` (build.md §1.2), or takes the answer from $CPM_HOME/toolchains.json when the
+// compiler file is unchanged (§1.3). Throws cpm::Error when it can't be probed.
+Toolchain probe_compiler(const std::filesystem::path& cxx, const std::filesystem::path& home);
 
 // The flag that selects `std` (e.g. "-std=c++23", or "-std=c++2b" on older compilers). The answer is
 // cached in the toolchain and in toolchains.json. Throws if the compiler supports neither spelling.

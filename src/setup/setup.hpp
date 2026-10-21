@@ -40,6 +40,7 @@ PlatformTools parse_toolchains(std::string_view text, const std::string& platfor
 
 struct Needs {
     bool compiler = false;
+    std::string compiler_family = "gcc";  // gcc | clang (cpm setup --compiler)
     bool ninja = false;
     bool git = false;
     bool curl = false;
@@ -48,8 +49,9 @@ struct Needs {
 // The package managers cpm setup knows, in the order it looks for them.
 const std::vector<std::string>& package_managers();
 
-// The packages `manager` should install for what is missing. `compiler_package` is the GCC package for apt-get
-// (see apt_compiler_package); the other managers' default GCC is recent enough.
+// The packages `manager` should install for what is missing. `compiler_package` is the compiler package for apt-get
+// (see apt_compiler_package and apt_clang_package); the other managers' defaults are recent enough. Clang comes with
+// GCC's package too, for the standard library it uses on Linux.
 std::vector<std::string> packages_for(const std::string& manager, const Needs& needs, const std::string& compiler_package);
 
 // The command that installs `packages`, with sudo in front unless running as root.
@@ -57,6 +59,9 @@ std::vector<std::string> install_command(const std::string& manager, const std::
 
 // apt-get: the newest GCC package the distribution has, from g++-15 down to g++-13, else plain g++.
 std::string apt_compiler_package(const std::function<bool(std::string_view)>& available);
+
+// apt-get: the newest Clang package the distribution has, from clang-20 down to clang-17, else plain clang.
+std::string apt_clang_package(const std::function<bool(std::string_view)>& available);
 
 // Whether `apt-cache policy <package>` output offers a version of exactly `package`. apt treats a name that no
 // package has as a regular expression ("g++-15" matches clang-15), so other packages' entries must not count.
@@ -71,6 +76,7 @@ struct Options {
     bool check = false;    // report only
     bool yes = false;      // do not ask
     bool managed = false;  // install CPM's own tools even when others work
+    std::optional<std::string> compiler;  // --compiler gcc|clang: install it and make it the machine's choice
 };
 
 // The whole command; returns the exit code (0 when the machine is ready).

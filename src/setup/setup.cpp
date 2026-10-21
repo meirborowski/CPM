@@ -19,6 +19,7 @@
 #include "json/parse.hpp"
 #include "manifest/config.hpp"
 #include "toolchain/probe.hpp"
+#include "toolchain/select.hpp"
 
 #ifndef _WIN32
 #include <unistd.h>
@@ -61,7 +62,8 @@ CompilerState inspect_compiler(const fs::path& home) {
     manifest::UserConfig config = manifest::load_user_config(home);
     CompilerState s;
     try {
-        toolchain::Toolchain tc = toolchain::find_toolchain({.cli_cxx = std::nullopt, .config_cxx = config.cxx, .home = home});
+        toolchain::Toolchain tc =
+            toolchain::find_toolchain({.config_cxx = config.cxx, .config_toolchain = config.toolchain, .home = home});
         int need = tc.family == toolchain::Family::Gcc          ? kMinGcc
                    : tc.family == toolchain::Family::AppleClang ? kMinAppleClang
                                                                 : kMinClang;
@@ -373,7 +375,12 @@ std::vector<std::string> packages_for(const std::string& manager, const Needs& n
     else if (manager == "apk") n = {"g++", "ninja-is-really-ninja"};  // "ninja" is samurai on Alpine
     else throw Error(std::format("unknown package manager '{}'", manager));
     std::vector<std::string> packages;
-    if (needs.compiler) packages.push_back(n.compiler);
+    if (needs.compiler && needs.compiler_family == "clang") {
+        packages.push_back(manager == "apt-get" ? compiler_package : "clang");
+        packages.push_back(manager == "apt-get" ? "g++" : n.compiler);  // GCC's standard library, which Clang uses here
+    } else if (needs.compiler) {
+        packages.push_back(n.compiler);
+    }
     if (needs.ninja) packages.push_back(n.ninja);
     if (needs.git) packages.push_back("git");
     if (needs.curl) packages.push_back("curl");
@@ -402,6 +409,13 @@ std::string apt_compiler_package(const std::function<bool(std::string_view)>& av
     return "g++";
 }
 
+std::string apt_clang_package(const std::function<bool(std::string_view)>& available) {
+    for (const char* p : {"clang-20", "clang-19", "clang-18", "clang-17"}) {
+        if (available(p)) return p;
+    }
+    return "clang";
+}
+
 bool apt_policy_offers(std::string_view policy, std::string_view package) {
     bool in_entry = false;
     for (std::string_view line : str::split_lines(policy)) {
@@ -417,10 +431,20 @@ bool apt_policy_offers(std::string_view policy, std::string_view package) {
 }
 
 void set_config(const fs::path& home, const std::string& key, const std::string& value) {
-    fs::path file = home / "config.jsonc";
-    std::string text = fsx::try_read_file(file).value_or("// CPM's user configuration (docs/spec/cli.md, Configuration).\n{\n}\n");
-    text = json::edit::set_member(text, {key}, json::Value(value));
-    fsx::write_file_atomic(file, text);
+    manifest::set_user_config(home, key, value);
+}
+
+// After `cpm setup --compiler`: the newest compiler of that family CPM now finds becomes the machine's choice.
+void choose_installed(const fs::path& home, toolchain::Family family) {
+    std::vector<toolchain::Found> found = toolchain::list_compilers(home);
+    toolchain::Request request{family, std::nullopt, std::string(toolchain::to_string(family))};
+    const toolchain::Found* best = toolchain::best_match(found, request);
+    if (best == nullptr) {
+        throw Error(std::format("{} was installed, but CPM doesn't find it", toolchain::to_string(family)),
+                    "open a new terminal so PATH includes it, then run cpm toolchain use " + std::string(toolchain::to_string(family)));
+    }
+    set_config(home, "cxx", paths::to_utf8(best->cxx));
+    manifest::set_user_config(home, "toolchain", std::nullopt);
 }
 
 // ---- the command
@@ -433,7 +457,7 @@ int run(const Options& options, const fs::path& home) {
     std::vector<std::string> actions;
     std::vector<std::string> notes;
     std::function<void()> act = [] {};
-    bool need_compiler = !state.compiler.usable;
+    bool need_compiler = !state.compiler.usable || options.compiler.has_value();
     bool need_ninja = !state.ninja.usable;
     bool note_curl = !state.curl;  // unless setup installs it
     if (!state.tar) notes.push_back("tar is needed to unpack packages; install it with your system's package manager");
@@ -442,6 +466,11 @@ int run(const Options& options, const fs::path& home) {
     }
 
 #if defined(_WIN32)
+    if (options.compiler == "clang") {
+        throw Error("cpm setup can't install Clang on Windows yet",
+                    "install llvm-mingw (github.com/mstorsjo/llvm-mingw) or MSYS2's mingw-w64-ucrt-x86_64-clang, then run "
+                    "cpm toolchain use clang");
+    }
     if (!state.git) notes.push_back("git is only needed for git dependencies; get it with: winget install --id Git.Git -e");
     bool get_compiler = need_compiler || options.managed;
     bool get_ninja = need_ninja || options.managed;
@@ -465,7 +494,10 @@ int run(const Options& options, const fs::path& home) {
         }
         actions.push_back("point $CPM_HOME/config.jsonc at them");
         act = [&] {
-            if (get_compiler) set_config(home, "cxx", paths::to_utf8(install_tool(*tools->compiler, "winlibs", home)));
+            if (get_compiler) {
+                set_config(home, "cxx", paths::to_utf8(install_tool(*tools->compiler, "winlibs", home)));
+                manifest::set_user_config(home, "toolchain", std::nullopt);
+            }
             if (get_ninja) set_config(home, "ninja", paths::to_utf8(install_tool(*tools->ninja, "ninja", home)));
         };
     }
@@ -473,6 +505,16 @@ int run(const Options& options, const fs::path& home) {
     bool get_ninja = need_ninja || options.managed;
     bool clt_missing = proc::capture({.argv = {"xcode-select", "-p"}}).exit_code != 0;
     bool rerun = false;
+    std::optional<std::string> formula;  // --compiler: GCC or LLVM's Clang from Homebrew
+    if (options.compiler) {
+        if (!proc::find_program("brew")) {
+            throw Error(std::format("installing {} on macOS needs Homebrew", *options.compiler),
+                        "install Homebrew from https://brew.sh, or use Apple's Clang: cpm setup without --compiler");
+        }
+        formula = *options.compiler == "gcc" ? "gcc" : "llvm";
+        actions.push_back(std::format("install {} with Homebrew (brew install {})", *options.compiler == "gcc" ? "GCC" : "LLVM's Clang", *formula));
+        need_compiler = false;  // Apple's Command Line Tools are not what was asked for
+    }
     if (need_compiler) {
         if (clt_missing) {
             actions.push_back("install Apple's Command Line Tools (xcode-select --install; a dialog asks you to confirm)");
@@ -488,12 +530,20 @@ int run(const Options& options, const fs::path& home) {
         actions.push_back(std::format("download {} ({}) into {}", t.name, size_text(t.size), tools_dir(home)));
     }
     act = [&] {
+        if (formula) {
+            if (run_command({"brew", "install", *formula}) != 0) throw Error(std::format("brew install {} failed", *formula));
+            choose_installed(home, *options.compiler == "gcc" ? toolchain::Family::Gcc : toolchain::Family::Clang);
+        }
         if (need_compiler && clt_missing) run_command({"xcode-select", "--install"});
         if (get_ninja) set_config(home, "ninja", paths::to_utf8(install_tool(*tools->ninja, "ninja", home)));
         if (rerun) notes.push_back("finish installing the Command Line Tools in the dialog, then run cpm setup again");
     };
 #else
-    Needs needs{.compiler = need_compiler, .ninja = need_ninja && !options.managed, .git = !state.git, .curl = !state.curl};
+    Needs needs{.compiler = need_compiler,
+                .compiler_family = options.compiler.value_or("gcc"),
+                .ninja = need_ninja && !options.managed,
+                .git = !state.git,
+                .curl = !state.curl};
     std::string manager;
     for (const auto& m : package_managers()) {
         if (proc::find_program(m)) {
@@ -512,7 +562,8 @@ int run(const Options& options, const fs::path& home) {
     std::optional<PlatformTools> tools;
     if (use_packages) {
         std::string list;
-        for (auto [what, needed] : {std::pair{"a GCC compiler", needs.compiler}, std::pair{"Ninja", needs.ninja}, std::pair{"git", needs.git},
+        const char* compiler_text = needs.compiler_family == "clang" ? "Clang (with g++, for its standard library)" : "a GCC compiler";
+        for (auto [what, needed] : {std::pair{compiler_text, needs.compiler}, std::pair{"Ninja", needs.ninja}, std::pair{"git", needs.git},
                                     std::pair{"curl", needs.curl}}) {
             if (needed) list += std::string(list.empty() ? "" : ", ") + what;
         }
@@ -530,13 +581,19 @@ int run(const Options& options, const fs::path& home) {
                 std::vector<std::string> update = {"apt-get", "update"};
                 if (!root) update.insert(update.begin(), "sudo");
                 if (run_command(update) != 0) throw Error("apt-get update failed");
-                if (needs.compiler) compiler_package = apt_compiler_package(apt_has);
+                if (needs.compiler) {
+                    compiler_package = needs.compiler_family == "clang" ? apt_clang_package(apt_has) : apt_compiler_package(apt_has);
+                }
             }
             if (run_command(install_command(manager, packages_for(manager, needs, compiler_package), root)) != 0) {
                 throw Error(std::format("{} could not install the packages", manager));
             }
-            // A versioned GCC (g++-14) is not what `g++` runs, so CPM is told to use it.
-            if (needs.compiler && compiler_package != "g++") set_config(home, "cxx", compiler_package);
+            if (options.compiler) {
+                choose_installed(home, needs.compiler_family == "clang" ? toolchain::Family::Clang : toolchain::Family::Gcc);
+            } else if (needs.compiler && compiler_package != "g++") {
+                // A versioned GCC (g++-14) is not what `g++` runs, so CPM is told to use it.
+                set_config(home, "cxx", compiler_package);
+            }
         }
         if (download_ninja) set_config(home, "ninja", paths::to_utf8(install_tool(*tools->ninja, "ninja", home)));
     };

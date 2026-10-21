@@ -16,7 +16,7 @@ int cmd_test(const ParsedArgs& args, Context& ctx) {
     build::BuildRequest req;
     req.cwd = ctx.cwd;
     req.profile = profile_option(args);
-    req.cxx = args.value("cxx");
+    req.toolchain = toolchain_option(args);
     req.jobs = jobs_option(args, config);
     req.targets = build::BuildRequest::Targets::Tests;
     req.test_filters = args.positionals;

@@ -17,14 +17,24 @@ Steps 1–7 make up the no-op cost. They MUST stay free of subprocesses on a war
 
 ### 1.1 Selection order
 
-The first source that names a compiler wins:
+The first of these that makes a choice wins:
 
-1. `--cxx <name|path>` on the command line
-2. the `CXX` environment variable
-3. `"cxx"` in `$CPM_HOME/config.jsonc`
-4. auto-detection on `PATH`: `clang++`, then `g++` (and on Windows, once the MSVC driver exists: `cl.exe` on `PATH`, then the latest Visual Studio found by `vswhere`). Until then, a `clang++` that targets the MSVC ABI (`*-windows-msvc`, as installed by LLVM's Windows installer or Visual Studio) is skipped by auto-detection; named explicitly, it is an error with a hint to use a MinGW toolchain.
+1. **The command:** `--toolchain <choice>`, or `--cxx <compiler>` ([cli.md](cli.md#cpm-toolchain)).
+2. **The environment:** `CXX`, a compiler name or path.
+3. **The project:** `"toolchain"` in its `cpm.jsonc` ([manifest.md §3](manifest.md#3-field-reference)).
+4. **The machine:** `"cxx"` or `"toolchain"` in `$CPM_HOME/config.jsonc`, which `cpm toolchain use` and `cpm setup` write ([cli.md §5](cli.md#5-configuration)). When both are there, `"cxx"` wins.
+5. **Automatic:** `clang++`, then `g++`, on `PATH`. A `clang++` that targets the MSVC ABI (`*-windows-msvc`, as LLVM's Windows installer and Visual Studio install it) is skipped until CPM supports MSVC.
 
-A bare name is looked up on `PATH`. On Windows the lookup tries only `.exe` and `.com`, the extensions `CreateProcess` can start directly, rather than every `PATHEXT` entry. The resolved absolute path identifies the toolchain from then on.
+A *choice* is one of two things:
+- **A compiler:** a program name, looked up on `PATH` (`g++-14`, `clang++`), or a path. On Windows the lookup tries only `.exe` and `.com`, the extensions `CreateProcess` can start directly, rather than every `PATHEXT` entry.
+- **A request:** a family, optionally followed by a version range: `gcc`, `clang >=18`, `apple-clang`, `gcc 14` (§1.4). The families are `gcc`, `clang` and `apple-clang`. `clang` means LLVM's Clang, not Apple's. A project's `"toolchain"` takes only requests, since paths differ between machines. It can also list several requests, which are tried in order: `["gcc >=14", "clang >=18", "apple-clang >=16"]`.
+
+The resolved absolute path identifies the toolchain from then on.
+
+- **What chose it.** Every build says which compiler it uses and what chose it: `Compiling hello v0.1.0 (debug, gcc 14.2.0, from cpm.jsonc)`. The sources read `from --toolchain`, `from --cxx`, `from CXX`, `from cpm.jsonc`, `from config.jsonc` and `found on PATH`. With `-v` the line also gives the compiler's path.
+- **Disagreements.** When the command or `CXX` chooses a compiler that the project's `"toolchain"` doesn't accept, CPM warns and uses the chosen compiler, so a project can still be tried with other compilers.
+- **Nothing matches.** A request that no compiler on the machine meets is an error. It names the request and what made it, lists the compilers CPM found, and says how to get one: `cpm setup --compiler gcc` or `cpm setup --compiler clang` where `cpm setup` can install it ([cli.md](cli.md#cpm-setup)).
+- A compiler that targets the MSVC ABI, named explicitly, is an error with a hint to use a MinGW toolchain.
 
 ### 1.2 Family and companion tools
 
@@ -54,6 +64,20 @@ A bare name is looked up on `PATH`. On Windows the lookup tries only `.exe` and 
 ```
 
 An entry is reused while the compiler file's size and mtime are unchanged. `stdFlags` records the accepted spelling of each standard the first time it is requested. The final name (`-std=c++23`) is tried first, then the provisional one (`-std=c++2b`, `-std=c++2c`).
+
+### 1.4 Finding compilers
+
+`cpm toolchain list` and requests (§1.1) look for compilers in these places, in this order:
+
+1. every directory on `PATH`: `g++` and `clang++`, and versioned names such as `g++-14` and `clang++-18` (`.exe` on Windows);
+2. `$CPM_HOME/tools`: the `bin` directories of the tools `cpm setup` installed (`<tool>/bin` and `<tool>/mingw64/bin`);
+3. on Windows, MSYS2's environments: `ucrt64/bin`, `clang64/bin` and `mingw64/bin` under `C:/msys64`, or under `MSYS2_ROOT` when it is set;
+4. on macOS, Homebrew's LLVM, which isn't on `PATH`: `/opt/homebrew/opt/llvm/bin` and `/usr/local/opt/llvm/bin`.
+
+- A program found under two names, such as `g++` and a `g++-13` it links to, is listed once, under the first name found.
+- Each compiler is probed (§1.3, so only new or changed compilers run). A compiler is *usable* when it is GCC or Clang and doesn't target the MSVC ABI. One older than the versions CPM supports (GCC 13, Clang 17, Apple Clang 15) is still usable, with a note, since many projects need less than C++23.
+- **Matching a request:** among the usable compilers of the requested family whose version is in the range, the one with the highest version wins. A tie goes to the one found first. Versions compare as `MAJOR.MINOR.PATCH`, and ranges are written as in [dependencies.md §3](dependencies.md#3-ranges), so `14` means any 14.x and `>=13` any version from 13 on.
+- Looking for compilers lists directories and reads the probe cache. It runs no programs on a warm cache, so builds that use requests keep their no-op cost (overview).
 
 ## 2. Drivers
 

@@ -5,6 +5,7 @@
 
 #include "core/fsx.hpp"
 #include "core/paths.hpp"
+#include "json/edit.hpp"
 #include "json/parse.hpp"
 #include "manifest/check.hpp"
 
@@ -32,7 +33,7 @@ UserConfig load_user_config(const std::filesystem::path& home) {
         c.type_error(root, "the configuration", "a JSON object");
         throw DiagnosticsError(c.take_all());
     }
-    static constexpr std::array<std::string_view, 6> keys = {"registries", "cxx", "ninja", "jobs", "color", "linkMode"};
+    static constexpr std::array<std::string_view, 7> keys = {"registries", "cxx", "toolchain", "ninja", "jobs", "color", "linkMode"};
     c.unknown_keys(root, keys, "config.jsonc");
 
     if (const json::Value* regs = c.object(root, "registries")) {
@@ -54,6 +55,7 @@ UserConfig load_user_config(const std::filesystem::path& home) {
         }
     }
     cfg.cxx = c.string(root, "cxx");
+    cfg.toolchain = c.string(root, "toolchain");
     cfg.ninja = c.string(root, "ninja");
     if (const json::Value* jobs = root.find("jobs")) {
         if (jobs->is_int() && jobs->as_int() >= 0 && jobs->as_int() <= 4096) cfg.jobs = static_cast<int>(jobs->as_int());
@@ -71,6 +73,15 @@ UserConfig load_user_config(const std::filesystem::path& home) {
     if (c.has_errors()) throw DiagnosticsError(c.take_all());
     cfg.warnings = c.take_warnings();
     return cfg;
+}
+
+void set_user_config(const std::filesystem::path& home, const std::string& key, const std::optional<std::string>& value) {
+    std::filesystem::path file = home / "config.jsonc";
+    auto existing = fsx::try_read_file(file);
+    if (!existing && !value) return;
+    std::string text = existing.value_or("// CPM's user configuration (docs/spec/cli.md, Configuration).\n{\n}\n");
+    text = value ? json::edit::set_member(text, {key}, json::Value(*value)) : json::edit::remove_member(text, {key});
+    fsx::write_file_atomic(file, text);
 }
 
 }  // namespace cpm::manifest

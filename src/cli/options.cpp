@@ -34,6 +34,15 @@ std::function<std::vector<build::Dependency>(const build::Project&)> dependency_
     return [config](const build::Project& project) { return install::ensure(project, config); };
 }
 
+std::optional<toolchain::Choice> toolchain_option(const ParsedArgs& args) {
+    auto toolchain = args.value("toolchain");
+    auto cxx = args.value("cxx");
+    if (toolchain && cxx) throw UsageError("use --toolchain or --cxx, not both", "--toolchain takes a compiler too: --toolchain g++-14");
+    if (toolchain) return toolchain::Choice{*toolchain, "--toolchain"};
+    if (cxx) return toolchain::Choice{*cxx, "--cxx"};
+    return std::nullopt;
+}
+
 manifest::UserConfig load_config() {
     manifest::UserConfig config = manifest::load_user_config(paths::cpm_home());
     for (const auto& w : config.warnings) log::diagnostic(w);

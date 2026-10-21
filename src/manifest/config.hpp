@@ -20,6 +20,7 @@ struct UserConfig {
     std::filesystem::path file;
     std::map<std::string, RegistryConfig> registries;
     std::optional<std::string> cxx;
+    std::optional<std::string> toolchain;  // the machine's compiler request (build.md §1.1)
     std::optional<std::string> ninja;
     std::optional<int> jobs;
     std::optional<std::string> color;
@@ -30,5 +31,9 @@ struct UserConfig {
 // Loads the configuration from `home` (normally $CPM_HOME). A missing file yields defaults.
 // Throws DiagnosticsError for invalid content.
 UserConfig load_user_config(const std::filesystem::path& home);
+
+// Sets (or, with nullopt, removes) a top-level string in $CPM_HOME/config.jsonc, creating the file if needed and
+// editing it in place, so comments survive.
+void set_user_config(const std::filesystem::path& home, const std::string& key, const std::optional<std::string>& value);
 
 }  // namespace cpm::manifest

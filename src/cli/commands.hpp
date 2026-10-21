@@ -28,6 +28,7 @@ int cmd_info(const ParsedArgs& args, Context& ctx);
 int cmd_tree(const ParsedArgs& args, Context& ctx);
 int cmd_why(const ParsedArgs& args, Context& ctx);
 int cmd_cache(const ParsedArgs& args, Context& ctx);
+int cmd_toolchain(const ParsedArgs& args, Context& ctx);
 int cmd_build(const ParsedArgs& args, Context& ctx);
 int cmd_run(const ParsedArgs& args, Context& ctx);
 int cmd_test(const ParsedArgs& args, Context& ctx);

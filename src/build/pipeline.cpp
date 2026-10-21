@@ -78,7 +78,7 @@ void derive_from_manifest(Project& p, const std::string& profile_name) {
 
 }  // namespace
 
-Project load_project(const fs::path& cwd, const std::string& profile, const std::optional<std::string>& cxx,
+Project load_project(const fs::path& cwd, const std::string& profile, const std::optional<toolchain::Choice>& choice,
                      const manifest::UserConfig& config) {
     auto root = paths::find_project_root(cwd);
     if (!root) {
@@ -91,7 +91,9 @@ Project load_project(const fs::path& cwd, const std::string& profile, const std:
     for (const auto& w : p.manifest.warnings) log::diagnostic(w);
     pick_profile(p.manifest, profile);  // fail on an unknown profile before probing anything
     p.home = paths::cpm_home();
-    p.toolchain = toolchain::find_toolchain({cxx, config.cxx, p.home});
+    p.toolchain = toolchain::find_toolchain(
+        {.command = choice, .project = p.manifest.toolchain, .config_cxx = config.cxx, .config_toolchain = config.toolchain, .home = p.home});
+    log::verbose(std::format("using {} at {} ({})", p.toolchain.description(), paths::to_utf8(p.toolchain.cxx), p.toolchain.chosen_by));
     p.driver = toolchain::make_driver(p.toolchain);
     derive_from_manifest(p, profile);
     return p;
@@ -110,7 +112,7 @@ BuildResult run_build(const BuildRequest& req, const manifest::UserConfig& confi
         log::trace(std::format("{:7.1f} ms  {}", ms, stage));
     };
 
-    Project project = load_project(req.cwd, req.profile, req.cxx, config);
+    Project project = load_project(req.cwd, req.profile, req.toolchain, config);
     const manifest::Manifest& m = project.manifest;
     const toolchain::Toolchain& tc = project.toolchain;
     const toolchain::Driver& driver = *project.driver;
@@ -164,8 +166,9 @@ BuildResult run_build(const BuildRequest& req, const manifest::UserConfig& confi
             break;
     }
 
-    log::status("Compiling", std::format("{} v{} ({}, {})", plan.package, plan.package_version, plan.profile,
-                                         tc.description()));
+    // Which compiler, and what chose it (build.md §1.1).
+    log::status("Compiling", std::format("{} v{} ({}, {}{})", plan.package, plan.package_version, plan.profile, tc.description(),
+                                         tc.chosen_by.empty() ? "" : ", " + tc.chosen_by));
 
     fs::path build_dir = plan.root / paths::from_utf8(plan.build_dir);
     if (req.clean) {

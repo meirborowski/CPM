@@ -134,6 +134,7 @@ hello/
 | Command | What it does |
 |---|---|
 | `cpm setup [--check]` | Install a C++ compiler and Ninja if they're missing, or just report what's there |
+| `cpm toolchain list` · `use <choice>` | List the compilers CPM finds, or choose one for this machine: `cpm toolchain use clang` |
 | `cpm init [dir]` | Create a project: executable, static or shared library, or header-only |
 | `cpm install <pkg>` (`i`, `add`) | Add dependencies: `fmt`, `fmt@^12`, `../mylib`, `git+https://…#v1.0` |
 | `cpm install` | Install everything in `cpm.jsonc` exactly as `cpm-lock.json` says |
@@ -204,7 +205,8 @@ flowchart LR
 | Setting | Where |
 |---|---|
 | Registries, compiler, Ninja path, colours | `~/.cpm/config.jsonc` (`%USERPROFILE%\.cpm\config.jsonc` on Windows) |
-| Use another compiler | `CXX=clang++` or `--cxx clang++` |
+| Choose the compiler | `cpm toolchain use clang` for this machine, `"toolchain": "gcc >=14"` in `cpm.jsonc` for a project, or `--toolchain clang` for one command ([build.md §1.1](docs/spec/build.md#11-selection-order)) |
+| Install another compiler | `cpm setup --compiler gcc` or `cpm setup --compiler clang` |
 | Move CPM's home (store, caches, sign-in) | `CPM_HOME` |
 | Profiles, defines, per-platform settings | `cpm.jsonc` ([manifest reference](docs/spec/manifest.md)) |
 
@@ -219,9 +221,10 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - publishing, searching the registry, and finding outdated dependencies;
 - inspecting packages and dependency graphs (`cpm info`, `cpm tree`, `cpm why`), and cleaning the store (`cpm cache`);
 - version conflicts explained step by step, by a PubGrub resolver, and version overrides for when a dependency's range is too strict;
+- choosing the compiler per machine, project or command, with `cpm toolchain list` showing every compiler CPM finds;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** choosing the compiler, C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.4.
+**Next, on the [road to 0.5.0](ROADMAP.md):** C libraries, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.5.
 
 ## Documentation
 

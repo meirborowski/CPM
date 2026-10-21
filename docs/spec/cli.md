@@ -74,7 +74,7 @@ Without specs, CPM installs everything in the manifest. With specs, it adds or u
 | `--registry <name\|url>` | Registry for the registry specs given on this command line; they are written in the object form `{ "version": …, "registry": … }`. |
 | `--profile <name>`, `--release` | Prepare binaries for this profile's ABI. Default `debug`. |
 | `--no-build` | Resolve, fetch and link headers, and use prebuilt binaries the registry offers, but build nothing from source. `cpm build` builds what is missing later. |
-| `--cxx <compiler>` | Compiler whose ABI the dependency binaries are built for ([build.md §1.1](build.md#11-selection-order)). |
+| `--toolchain <choice>` | Compiler whose ABI the dependency binaries are built for ([build.md §1.1](build.md#11-selection-order)). `--cxx <compiler>` still works. |
 
 A spec is a registry package (`fmt` adds `^<newest release>`, or the exact version with `-E`; `fmt@~10.1` keeps the range as typed), a path (`../mylib`, `file:../mylib`), a git URL (`git+https://host/repo.git#v1.2.0`, `github:owner/repo#v1.2.0`), or a path or git spec prefixed with a name (`mylib@file:../mylib`). A path or git spec without a name takes the name from the package's own `cpm.jsonc`; a package without one must be added by hand with a manifest overlay. Relative paths are resolved against the current directory and written relative to the project root. `--offline` and `--prefer-offline` exclude each other.
 
@@ -94,7 +94,7 @@ If a step fails, the manifest and the lockfile stay untouched. Store entries tha
 ### `cpm remove`
 
 ```
-cpm remove <name>… [--offline] [--profile <name> | --release] [--cxx <compiler>]
+cpm remove <name>… [--offline] [--profile <name> | --release] [--toolchain <choice>]
 aliases: rm, uninstall
 ```
 
@@ -103,7 +103,7 @@ Removes the named packages from `dependencies` and `devDependencies`, then re-ru
 ### `cpm build`
 
 ```
-cpm build [--profile <name> | --release] [-j <n>] [--tests] [--cxx <compiler>] [--clean]
+cpm build [--profile <name> | --release] [-j <n>] [--tests] [--toolchain <choice>] [--clean]
 ```
 
 Builds the root package ([build.md](build.md)). If the lockfile is stale or `cpm_modules` is out of date, it installs first and says so.
@@ -114,7 +114,7 @@ Builds the root package ([build.md](build.md)). If the lockfile is stale or `cpm
 | `--release` | Same as `--profile release`. |
 | `-j, --jobs <n>` | Parallel jobs passed to Ninja (default: Ninja's default). |
 | `--tests` | Also build the test executables. |
-| `--cxx <compiler>` | Compiler override ([build.md §1.1](build.md#11-selection-order)). |
+| `--toolchain <choice>` | The compiler: a request such as `gcc >=14`, or a compiler name or path ([build.md §1.1](build.md#11-selection-order)). `--cxx <compiler>` still works, and takes only a name or path. |
 | `--clean` | Delete `cpm_modules/.cache/<profile>/` and `build/<profile>/` before building. |
 
 On success it prints the profile, the elapsed time, and the main output path, for example `build/debug/hello.exe` ([build.md §4.1](build.md#41-build-and-output-directories)).
@@ -122,7 +122,7 @@ On success it prints the profile, the elapsed time, and the main output path, fo
 ### `cpm run`
 
 ```
-cpm run [<script>] [--profile <name> | --release] [-j <n>] [--cxx <compiler>] [-- <args>…]
+cpm run [<script>] [--profile <name> | --release] [-j <n>] [--toolchain <choice>] [-- <args>…]
 ```
 
 - **With `<script>`:** runs `scripts.<script>` from the manifest through the system shell, in the project root, without building first. The arguments after `--` reach the script exactly as given:
@@ -156,7 +156,7 @@ Builds and runs `tests/*.test.cpp` executables ([build.md §7](build.md#7-tests)
 ### `cpm update`
 
 ```
-cpm update [<name>…] [--profile <name> | --release] [--cxx <compiler>] [--no-build]
+cpm update [<name>…] [--profile <name> | --release] [--toolchain <choice>] [--no-build]
 alias: up
 ```
 
@@ -293,6 +293,32 @@ unused     2 packages, 1 archive, 5.4 MB (cpm cache clean removes them)
 
 Removing something a project still needs costs a rebuild, never a broken project: its next `cpm install` or `cpm build` downloads and builds it again.
 
+### `cpm toolchain`
+
+```
+cpm toolchain list
+cpm toolchain use <choice>
+cpm toolchain use auto
+```
+
+`cpm toolchain list` shows on stdout every compiler CPM finds ([build.md §1.4](build.md#14-finding-compilers)): its family, version and path, and why CPM can't use it, when it can't. The one a build here would use is marked `*`, and a note on stderr says what chose it:
+
+```
+$ cpm toolchain list
+  family  version  path
+* gcc     13.2.0   /usr/bin/g++
+  gcc     14.2.0   /usr/bin/g++-14
+  clang   18.1.3   /usr/bin/clang++-18
+note: * is what cpm build uses here: gcc 13.2.0, found on PATH
+```
+
+`cpm toolchain use <choice>` sets the machine's compiler in `$CPM_HOME/config.jsonc`, editing it in place:
+- A request such as `clang` or `gcc >=14` is saved as `"toolchain"`. It must match a compiler CPM finds, so that a typo doesn't surface at the next build.
+- A compiler name or path is saved as `"cxx"`, after checking that CPM can use it.
+- Either removes the other key, so the machine has one choice. `cpm toolchain use auto` removes both, which leaves the choice to the project and to automatic selection.
+
+It then says which compiler builds will use. The command line, `CXX` and a project's `"toolchain"` still come first ([build.md §1.1](build.md#11-selection-order)).
+
 ### `cpm publish`
 
 ```
@@ -304,7 +330,7 @@ Packs the current package and adds its version to a registry ([registry.md §6](
 ### `cpm setup`
 
 ```
-cpm setup [--check] [--yes] [--managed]
+cpm setup [--check] [--yes] [--managed] [--compiler gcc|clang]
 ```
 
 Makes the machine ready to build: a C++ compiler CPM supports (GCC 13+, Clang 17+, Apple Clang 15+), Ninja 1.10+, and the helpers it drives (`git`, `curl`, `tar`). The one-line installers run it after installing CPM ([registry.md §8](registry.md#8-installing-cpm)). It first reports what it finds, then installs what is missing:
@@ -320,6 +346,10 @@ With `apt-get`, CPM installs a versioned GCC package such as `g++-14` only if `a
 - **Pinned downloads.** What goes into `$CPM_HOME/tools` is listed, with URLs and SHA-256 checksums, in the `toolchains.json` of CPM's built-in registry ([registry.md §8.2](registry.md#82-toolchainsjson)); `CPM_TOOLCHAINS_URL` replaces that location. Every download is verified before it is unpacked, unpacked into a staging directory, and moved into place only when complete.
 - **Configuration.** When CPM installs a tool into `$CPM_HOME/tools`, or chooses a compiler that is not the first one on `PATH` (such as `g++-14`), it records it in `$CPM_HOME/config.jsonc` (`"cxx"`, `"ninja"`), editing the file in place so comments survive. Tools that are already usable are left alone.
 - **Before changing anything** CPM lists the commands it will run and the downloads with their sizes, and asks. `--yes` answers yes (for scripts and CI). `--check` only reports, and exits with 1 if anything is missing.
+- `--compiler gcc|clang` installs that compiler even when another one works, and makes it the machine's choice (`"cxx"` in `config.jsonc`):
+  - Linux: the distribution's packages. With `apt-get` that is the newest `g++-N` or `clang-N` package it has (from 15 down to 13 for GCC, and from 20 down to 17 for Clang), and otherwise `g++` or `clang`. Clang uses GCC's standard library on Linux, so `--compiler clang` installs `g++` too.
+  - macOS: `brew install gcc` or `brew install llvm`, which needs Homebrew. Without `--compiler`, macOS uses Apple's Clang from the Command Line Tools.
+  - Windows: `gcc` is WinLibs GCC, as without `--compiler`. `clang` isn't offered yet; CPM says so and suggests llvm-mingw or MSYS2's `mingw-w64-ucrt-x86_64-clang`.
 - `--managed` installs the tools CPM can provide into `$CPM_HOME/tools` (on Windows the compiler and Ninja, elsewhere Ninja) even when usable ones are already installed, and points the configuration at them.
 - **Last**, CPM checks the result the way a build would use it: it probes the compiler, checks that it accepts `-std=c++23`, and runs `ninja --version`.
 
@@ -368,14 +398,14 @@ Only the first page of 20 matches is shown. When there are more, a note on stder
 
 ### Reserved command names (*post-MVP*)
 
-`clean`, `fmt`, `workspace`, `toolchain`.
+`clean`, `fmt`, `workspace`.
 
 ## 4. Output
 
 Normative:
 
 - CPM's status messages, warnings, errors and the build tool's output go to **stderr**.
-- **stdout** is reserved for requested data: `--version`, `--help`, the results of `cpm search`, `cpm outdated`, `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (without `clean`), `cpm whoami` and `cpm owner list`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
+- **stdout** is reserved for requested data: `--version`, `--help`, the results of `cpm search`, `cpm outdated`, `cpm info`, `cpm tree`, `cpm why`, `cpm cache` (without `clean`), `cpm toolchain list`, `cpm whoami` and `cpm owner list`, and the output of programs and scripts started by `cpm run`/`cpm test -v`. `cpm run` can therefore be used in pipes.
 - Diagnostics follow [architecture.md §5](architecture.md#5-errors-and-diagnostics).
 
 Non-normative, recommended style (status verb right-aligned to 12 columns, bold green when colour is on):
@@ -412,7 +442,8 @@ User configuration lives in `$CPM_HOME/config.jsonc` (JSONC, optional):
     "default": "https://registry.example.org/cpm/",
     "internal": { "url": "file:///C:/registries/internal/", "allowHttp": false }
   },
-  "cxx": "g++",                       // compiler (build.md §1.1)
+  "toolchain": "clang >=18",          // the machine's compiler: a request (build.md §1.1)...
+  "cxx": "g++-14",                    // ...or a compiler name or path, which wins over "toolchain"
   "ninja": "C:/tools/ninja.exe",      // otherwise CPM_NINJA, then PATH
   "jobs": 0,                          // 0 = Ninja's default
   "color": "auto",

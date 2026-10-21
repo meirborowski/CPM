@@ -30,6 +30,7 @@ struct Toolchain {
     std::string eh;          // seh | dwarf | sjlj | itanium
     std::string threads;     // posix | win32 | mcf | single
     std::map<std::string, std::string> std_flags;  // "c++23" -> "-std=c++23", filled on demand
+    std::string chosen_by;                         // what chose it (build.md §1.1): "from cpm.jsonc", "found on PATH", ...
 
     bool is_mingw() const { return os == Os::Windows && (family == Family::Gcc || family == Family::Clang); }
     std::string description() const;  // "gcc 13.2.0"

@@ -65,7 +65,7 @@ int run_program(const ParsedArgs& args, Context& ctx, const std::string& profile
     build::BuildRequest req;
     req.cwd = ctx.cwd;
     req.profile = profile;
-    req.cxx = args.value("cxx");
+    req.toolchain = toolchain_option(args);
     req.jobs = jobs_option(args, config);
     req.require_executable = true;
     req.dependencies = dependency_provider(config);

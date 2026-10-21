@@ -18,7 +18,7 @@ namespace {
 
 int run_install(const ParsedArgs& args, Context& ctx, install::Options options) {
     manifest::UserConfig config = load_config();
-    build::Project project = build::load_project(ctx.cwd, profile_option(args), args.value("cxx"), config);
+    build::Project project = build::load_project(ctx.cwd, profile_option(args), toolchain_option(args), config);
     options.cwd = ctx.cwd;
     install::install(project, options, config);
     return 0;

@@ -20,7 +20,8 @@ using Handler = int (*)(const ParsedArgs&, Context&);
 const OptionSpec kProfileOption{"profile", 0, true, "<name>", "Build profile (default: debug)"};
 const OptionSpec kReleaseOption{"release", 0, false, "", "Same as --profile release"};
 const OptionSpec kJobsOption{"jobs", 'j', true, "<n>", "Parallel jobs passed to Ninja"};
-const OptionSpec kCxxOption{"cxx", 0, true, "<compiler>", "C++ compiler to use (name or path)"};
+const OptionSpec kToolchainOption{"toolchain", 0, true, "<choice>", "Compiler: a request such as \"gcc >=14\", or a name or path"};
+const OptionSpec kCxxOption{"cxx", 0, true, "<compiler>", "Compiler name or path (as --toolchain)"};
 const OptionSpec kRegistryOption{"registry", 0, true, "<name|url>", "Registry service (default: the default registry)"};
 
 const std::vector<OptionSpec> kGlobalOptions = {
@@ -43,7 +44,8 @@ const std::vector<Command>& command_table() {
         {{"setup", {}, "Install a C++ compiler and Ninja if this machine lacks them", "cpm setup [options]",
           {{"check", 0, false, "", "Only report what is missing"},
            {"yes", 'y', false, "", "Do not ask before installing"},
-           {"managed", 0, false, "", "Install CPM's own compiler and Ninja even if others work"}}},
+           {"managed", 0, false, "", "Install CPM's own compiler and Ninja even if others work"},
+           {"compiler", 0, true, "<gcc|clang>", "Install this compiler and make it this machine's choice"}}},
          &cmd_setup, ""},
         {{"init", {}, "Create a new package", "cpm init [<dir>] [options]",
           {{"yes", 'y', false, "", "Accept all defaults"},
@@ -61,14 +63,14 @@ const std::vector<Command>& command_table() {
            {"offline", 0, false, "", "Use only the local caches"},
            {"prefer-offline", 0, false, "", "Prefer cached registry data"},
            {"registry", 0, true, "<name|url>", "Registry for the given specs"},
-           kProfileOption, kReleaseOption, kCxxOption,
+           kProfileOption, kReleaseOption, kToolchainOption, kCxxOption,
            {"no-build", 0, false, "", "Do not build dependency binaries"}}},
          &cmd_install, ""},
         {{"remove", {"rm", "uninstall"}, "Remove dependencies", "cpm remove <name>... [options]",
-          {{"offline", 0, false, "", "Use only the local caches"}, kProfileOption, kReleaseOption, kCxxOption}},
+          {{"offline", 0, false, "", "Use only the local caches"}, kProfileOption, kReleaseOption, kToolchainOption, kCxxOption}},
          &cmd_remove, ""},
         {{"update", {"up"}, "Update dependencies to the newest versions their ranges allow", "cpm update [<name>...] [options]",
-          {kProfileOption, kReleaseOption, kCxxOption, {"no-build", 0, false, "", "Do not build dependency binaries"}}},
+          {kProfileOption, kReleaseOption, kToolchainOption, kCxxOption, {"no-build", 0, false, "", "Do not build dependency binaries"}}},
          &cmd_update, ""},
         {{"outdated", {}, "List dependencies that have newer versions", "cpm outdated", {}}, &cmd_outdated, ""},
         {{"info", {}, "Show a package on a registry", "cpm info <name>[@<range>] [options]", {kRegistryOption}}, &cmd_info, ""},
@@ -77,6 +79,9 @@ const std::vector<Command>& command_table() {
            {"prod", 0, false, "", "Leave out devDependencies"}}},
          &cmd_tree, ""},
         {{"why", {}, "Show which dependencies require a package", "cpm why <name>", {}}, &cmd_why, ""},
+        {{"toolchain", {}, "List the compilers CPM finds, or choose one for this machine",
+          "cpm toolchain list | cpm toolchain use <choice>|auto", {}},
+         &cmd_toolchain, ""},
         {{"cache", {}, "Show what CPM keeps in its home, or clean it up", "cpm cache [clean] [options]",
           {{"dry-run", 0, false, "", "With clean: list what would be removed, and remove nothing"},
            {"all", 0, false, "", "With clean: empty the store and the caches"}}},
@@ -84,14 +89,14 @@ const std::vector<Command>& command_table() {
         {{"build", {}, "Compile the package", "cpm build [options]",
           {kProfileOption, kReleaseOption, kJobsOption,
            {"tests", 0, false, "", "Also build the test executables"},
-           kCxxOption,
+           kToolchainOption, kCxxOption,
            {"clean", 0, false, "", "Delete the profile's build directory first"}}},
          &cmd_build, ""},
         {{"run", {}, "Run a script or the built executable", "cpm run [<script>] [options] [-- <args>...]",
-          {kProfileOption, kReleaseOption, kJobsOption, kCxxOption}},
+          {kProfileOption, kReleaseOption, kJobsOption, kToolchainOption, kCxxOption}},
          &cmd_run, ""},
         {{"test", {}, "Build and run the tests", "cpm test [<filter>...] [options]",
-          {kProfileOption, kReleaseOption, kJobsOption, kCxxOption,
+          {kProfileOption, kReleaseOption, kJobsOption, kToolchainOption, kCxxOption,
            {"timeout", 0, true, "<seconds>", "Per-test timeout (default: 300)"},
            {"no-run", 0, false, "", "Build the tests without running them"}}},
          &cmd_test, ""},

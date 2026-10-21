@@ -4,7 +4,6 @@
 #include <format>
 #include <vector>
 
-#include "core/env.hpp"
 #include "core/error.hpp"
 #include "core/fsx.hpp"
 #include "core/log.hpp"
@@ -50,49 +49,6 @@ std::string tail(std::string_view text, std::size_t lines) {
     std::size_t start = all.size() > lines ? all.size() - lines : 0;
     std::vector<std::string> kept(all.begin() + static_cast<std::ptrdiff_t>(start), all.end());
     return str::join(kept, "\n");
-}
-
-struct Candidates {
-    std::vector<fs::path> paths;  // in order of preference
-    bool requested = false;       // named by --cxx, CXX or config.jsonc rather than auto-detected
-};
-
-Candidates compiler_candidates(const Selection& sel) {
-    std::optional<std::string> requested;
-    std::string source;
-    if (sel.cli_cxx) {
-        requested = sel.cli_cxx;
-        source = "--cxx";
-    } else if (auto env_cxx = env::get("CXX"); env_cxx && !env_cxx->empty()) {
-        requested = env_cxx;
-        source = "CXX";
-    } else if (sel.config_cxx) {
-        requested = sel.config_cxx;
-        source = "config.jsonc";
-    }
-
-    Candidates out;
-    if (requested) {
-        auto p = proc::find_program(*requested);
-        if (!p) throw Error(std::format("compiler '{}' (from {}) not found", *requested, source),
-                            "check the name, or give a full path");
-        std::string stem = str::to_lower(paths::to_utf8(p->stem()));
-        if (stem == "cl" || stem == "clang-cl") {
-            throw Error(std::format("'{}' is an MSVC-style compiler, which CPM does not support yet", paths::to_utf8(*p)),
-                        "the MSVC driver is planned after the MVP; use g++ or clang++ for now (e.g. --cxx g++)");
-        }
-        out.paths.push_back(*p);
-        out.requested = true;
-        return out;
-    }
-    for (const char* name : {"clang++", "g++"}) {
-        if (auto p = proc::find_program(name)) out.paths.push_back(*p);
-    }
-    if (out.paths.empty()) {
-        throw Error("no C++ compiler found (looked for clang++ and g++ on PATH)",
-                    "install GCC or Clang, or point CXX or --cxx at a compiler");
-    }
-    return out;
 }
 
 fs::path find_archiver(const Toolchain& tc) {
@@ -315,9 +271,6 @@ bool targets_msvc(const Toolchain& tc) {
     return tc.os == Os::Windows && tc.target.find("-msvc") != std::string::npos;
 }
 
-namespace {
-
-// Probes one compiler, or takes the answer from $CPM_HOME/toolchains.json when the compiler is unchanged.
 Toolchain probe_compiler(const fs::path& cxx, const fs::path& home) {
     Stamp stamp = stamp_of(cxx);
     json::Value cache = load_cache(home);
@@ -341,25 +294,6 @@ Toolchain probe_compiler(const fs::path& cxx, const fs::path& home) {
     tc.ar = find_archiver(tc);
     store_in_cache(home, tc);
     return tc;
-}
-
-}  // namespace
-
-Toolchain find_toolchain(const Selection& sel) {
-    Candidates found = compiler_candidates(sel);
-    for (std::size_t i = 0; i < found.paths.size(); ++i) {
-        Toolchain tc = probe_compiler(found.paths[i], sel.home);
-        if (!targets_msvc(tc)) return tc;
-        // Auto-detection moves on (clang++ is tried first, and Windows machines often have an MSVC-targeting one).
-        if (found.requested || i + 1 == found.paths.size()) {
-            throw Error(std::format("{} targets the MSVC ABI ({}), which CPM does not support yet", paths::to_utf8(tc.cxx),
-                                    tc.target),
-                        "use a MinGW toolchain (g++ or clang++ from MSYS2 or llvm-mingw), e.g. --cxx g++; "
-                        "the MSVC driver is planned after the MVP");
-        }
-        log::verbose(std::format("skipping {}: it targets the MSVC ABI ({})", paths::to_utf8(tc.cxx), tc.target));
-    }
-    throw Error("no usable C++ compiler found");  // not reached: compiler_candidates never returns an empty list
 }
 
 std::string std_flag(Toolchain& tc, const std::string& std, const fs::path& home) {

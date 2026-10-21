@@ -6,6 +6,7 @@
 
 #include "core/fsx.hpp"
 #include "core/paths.hpp"
+#include "core/strings.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
 #include "manifest/check.hpp"
@@ -45,11 +46,11 @@ bool valid_package_name(std::string_view name) {
 
 namespace {
 
-constexpr std::array<std::string_view, 24> kTopLevelKeys = {
+constexpr std::array<std::string_view, 25> kTopLevelKeys = {
     "name",    "version",       "description",  "license",    "authors",  "repository",   "homepage",
     "keywords", "private",      "std",          "type",       "main",     "sources",      "include",
     "defines", "publicDefines", "systemLibs",   "files",      "scripts",  "dependencies", "devDependencies",
-    "overrides", "profiles",    "platforms"};
+    "overrides", "profiles",    "platforms",    "toolchain"};
 
 constexpr std::array<std::string_view, 6> kPlatformKeys = {"defines",  "publicDefines", "systemLibs",
                                                             "sources",  "cxxflags",      "ldflags"};
@@ -276,6 +277,31 @@ Manifest parse(std::string text, const fs::path& file, std::string display) {
         } else {
             c.error(root.find("type")->span(), std::format("unknown target type \"{}\"", *t),
                     "expected one of: executable, static-lib, shared-lib, header-only");
+        }
+    }
+    // toolchain (build.md §1.1): requests only, a family and an optional version range
+    if (const json::Value* tc = root.find("toolchain")) {
+        std::vector<const json::Value*> items;
+        if (tc->is_string()) items.push_back(tc);
+        else if (tc->is_array()) for (const auto& v : tc->as_array()) items.push_back(&v);
+        else c.type_error(*tc, "\"toolchain\"", "a string or an array of strings");
+        if (tc->is_array() && items.empty()) c.error(tc->span(), "\"toolchain\" must name at least one compiler");
+        for (const json::Value* v : items) {
+            if (!v->is_string()) {
+                c.type_error(*v, "a \"toolchain\" entry", "a string");
+                continue;
+            }
+            std::string_view text = str::trim(v->as_string());
+            std::size_t space = text.find_first_of(" \t");
+            std::string_view family = text.substr(0, space), range = space == std::string_view::npos ? "" : str::trim(text.substr(space));
+            if (family != "gcc" && family != "clang" && family != "apple-clang") {
+                c.error(v->span(), std::format("\"{}\" is not a compiler request", text),
+                        "start with gcc, clang or apple-clang, optionally followed by a version range, such as \"gcc >=14\"");
+            } else if (!range.empty() && !semver::Range::parse(range)) {
+                c.error(v->span(), std::format("invalid compiler version range \"{}\"", range), "use a range such as \">=14\", \"18\" or \"^13.2\"");
+            } else {
+                m.toolchain.emplace_back(text);
+            }
         }
     }
     if (auto main = c.string(root, "main")) {

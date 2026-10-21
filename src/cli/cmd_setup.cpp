@@ -1,3 +1,5 @@
+#include <format>
+
 #include "cli/commands.hpp"
 #include "core/error.hpp"
 #include "core/paths.hpp"
@@ -12,6 +14,10 @@ int cmd_setup(const ParsedArgs& args, Context&) {
     options.yes = args.flag("yes");
     options.managed = args.flag("managed");
     if (options.check && options.managed) throw UsageError("--check and --managed exclude each other");
+    if (auto compiler = args.value("compiler")) {
+        if (*compiler != "gcc" && *compiler != "clang") throw UsageError(std::format("--compiler takes gcc or clang, not '{}'", *compiler));
+        options.compiler = *compiler;
+    }
     return setup::run(options, paths::cpm_home());
 }
 

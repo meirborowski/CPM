@@ -79,6 +79,7 @@ The same manifest, together with its lockfile and registry index, is in [example
 | `private` | bool | `false` | `true` makes `cpm publish` refuse the package. |
 | `std` | string | `"c++20"` | C++ standard: `c++11`, `c++14`, `c++17`, `c++20`, `c++23`, `c++26`. For the root package it is the standard **everything** is compiled with. For a dependency it is the **minimum** standard that package needs (§3.2). |
 | `type` | string | inferred | `executable`, `static-lib`, `shared-lib`, `header-only` (§4). |
+| `toolchain` | string or string[] | — | The compiler the project asks for when neither the command line nor `CXX` choose one: a request such as `"gcc >=14"`, or several in order of preference, `["gcc >=14", "clang >=18"]` ([build.md §1.1](build.md#11-selection-order)). Only the root package's is used. |
 | `main` | string | inferred | Entrypoint source, relative to the package root (§4). |
 | `sources` | string[] | `["src/**/*.cpp", "src/**/*.cc", "src/**/*.cxx"]` | Glob patterns of translation units (§5). |
 | `include` | string | `"include"` | Public header directory, exported to dependents. It need not exist for executables. |
@@ -192,6 +193,7 @@ CPM validates the manifest after parsing and reports **all** problems it finds, 
 - missing or invalid `name` or `version`; an unknown `type`, `std` or profile value
 - a dependency that appears in both `dependencies` and `devDependencies`
 - a dependency on the package itself
+- a `toolchain` request that isn't a family (`gcc`, `clang`, `apple-clang`) optionally followed by a version range
 - an `overrides` key that isn't a package name or `<dependent>><name>` with two different names, or a value that isn't a version range
 - a `main` that does not exist, or an explicit `type` that contradicts the files on disk (`executable` without an entrypoint)
 - `profiles` problems: a custom profile without `inherits`, an inheritance cycle, an invalid name

@@ -10,6 +10,7 @@
 #include "build/plan.hpp"
 #include "manifest/config.hpp"
 #include "toolchain/abi.hpp"
+#include "toolchain/select.hpp"
 
 namespace cpm::build {
 
@@ -25,9 +26,10 @@ struct Project {
     std::filesystem::path home;     // $CPM_HOME
 };
 
-// Finds the project root from `cwd`, loads the manifest and the profile, and probes the toolchain.
+// Finds the project root from `cwd`, loads the manifest and the profile, and chooses and probes the toolchain
+// (build.md §1.1). `toolchain` is the command line's choice (--toolchain or --cxx), if any.
 Project load_project(const std::filesystem::path& cwd, const std::string& profile,
-                     const std::optional<std::string>& cxx, const manifest::UserConfig& config);
+                     const std::optional<toolchain::Choice>& toolchain, const manifest::UserConfig& config);
 
 // Reloads the manifest (after `cpm install` edited it) and everything derived from it.
 void reload_manifest(Project& project);
@@ -35,7 +37,7 @@ void reload_manifest(Project& project);
 struct BuildRequest {
     std::filesystem::path cwd;
     std::string profile = "debug";
-    std::optional<std::string> cxx;
+    std::optional<toolchain::Choice> toolchain;  // --toolchain or --cxx
     int jobs = 0;
     enum class Targets { Main, MainAndTests, Tests } targets = Targets::Main;
     std::vector<std::string> test_filters;  // for Targets::Tests: substrings of test names

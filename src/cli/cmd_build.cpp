@@ -14,7 +14,7 @@ int cmd_build(const ParsedArgs& args, Context& ctx) {
     build::BuildRequest req;
     req.cwd = ctx.cwd;
     req.profile = profile_option(args);
-    req.cxx = args.value("cxx");
+    req.toolchain = toolchain_option(args);
     req.jobs = jobs_option(args, config);
     req.clean = args.flag("clean");
     req.targets = args.flag("tests") ? build::BuildRequest::Targets::MainAndTests : build::BuildRequest::Targets::Main;

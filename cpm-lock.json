@@ -4,24 +4,24 @@
     ".": {
       "dependencies": {},
       "devDependencies": {
-        "doctest": {
-          "specifier": "{\"git\":\"https://github.com/doctest/doctest.git\",\"tag\":\"v2.4.11\"}",
-          "version": "2.4.11"
+        "cpm-test": {
+          "specifier": "^0.1.0",
+          "version": "0.1.0"
         }
       }
     }
   },
   "packages": {
-    "doctest@2.4.11": {
+    "cpm-test@0.1.0": {
       "dev": true,
       "resolution": {
-        "commit": "ae7a13539fb71f270b87eb2e874fbac80bc8dda2",
-        "ref": "v2.4.11",
-        "type": "git",
-        "url": "https://github.com/doctest/doctest.git"
+        "integrity": "sha256:875e4a2b2817f0efbc5129015cd8e00814c0bfcc5005d604a69fb0db5aaf5358",
+        "registry": "https://cpm-registry.com/",
+        "type": "registry",
+        "url": "https://cpm-registry.com/packages/cpm-test/cpm-test-0.1.0.tar.gz"
       },
-      "std": "c++11",
-      "type": "header-only"
+      "std": "c++20",
+      "type": "static-lib"
     }
   }
 }

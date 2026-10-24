@@ -270,7 +270,7 @@ The CPM repository is itself a CPM project (`cpm.jsonc`, `src/main.cpp`, `tests/
 | 2 | `stage1 build --release --clean` (stage 1 is first copied to `cpm_modules/.cache/stage1/`) | same path; `stage2 --version` and `stage2 test` MUST pass |
 
 After stage 1 exists, CPM is developed with itself (`cpm build`, `cpm test`, `cpm run`). The bootstrap script is kept working for fresh clones and CI.
-CPM's only dependency is its test framework, the devDependency `doctest` (git, pinned in `cpm-lock.json`). Stage 1 installs it into the store like any other package, so the first build on a machine with an empty store needs network access once. The bootstrap itself never does.
+CPM's only dependency is its test framework, the devDependency [`cpm-test`](https://github.com/cpm-org/cpm-test) from the default registry, pinned in `cpm-lock.json`. Stage 1 installs it into the store like any other package, so the first build on a machine with an empty store needs network access once. The bootstrap itself never does.
 When CPM rebuilds the executable that is currently running (Windows forbids overwriting it), it first renames that file to `<name>.old` and deletes stale `.old` files on the next run (see [build.md §6](build.md#6-running-ninja)).
 
 ## 8. Repository layout
@@ -280,7 +280,7 @@ cpm.jsonc  cpm-lock.json  README.md  LICENSE  .gitignore  .gitattributes
 docs/spec/       this specification (+ examples/)
 schema/          JSON Schemas (manifest, lockfile, registry index)
 src/             main.cpp and the modules of §3
-tests/           *.test.cpp, support/ (check.hpp over doctest; projects and registries built at test time)
+tests/           *.test.cpp, support/ (check.hpp over cpm-test; projects and registries built at test time)
 scripts/         bootstrap.{ps1,sh} (stage 0), selfhost.{ps1,sh}
 .github/         workflows/ci.yml (self-hosting check per toolchain), workflows/release.yml (tagged releases)
 ```

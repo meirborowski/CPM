@@ -110,15 +110,15 @@ TEST(projects_are_recorded_once_a_day) {
     fs::create_directories(app);
     std::string key = cache::project_key(app / "src" / "..");
     CHECK_EQ(key, cache::project_key(app));
-    CHECK(key.find('\\') == std::string::npos && !key.ends_with('/'));
+    CHECK((key.find('\\') == std::string::npos && !key.ends_with('/')));
 #ifdef _WIN32
-    CHECK(key[0] >= 'A' && key[0] <= 'Z' && key[1] == ':');
+    CHECK((key[0] >= 'A' && key[0] <= 'Z' && key[1] == ':'));
 #endif
 
     cache::register_project(home, app);
     auto list = cache::projects(home);
     CHECK_EQ(list.size(), 1u);
-    CHECK(list.contains(key) && list[key].size() == 10);  // "2026-10-20"
+    CHECK((list.contains(key) && list[key].size() == 10));  // "2026-10-20"
     auto doc = json::parse(cpm::fsx::read_file(home / "projects.json"), json::kStrict);
     CHECK_EQ(doc.find("projectsVersion")->as_int(), 1);
 

@@ -66,9 +66,9 @@ toolchain::Toolchain fake(Family family, const std::string& version) {
 
 TEST(requests_name_a_family_and_a_range) {
     auto gcc = toolchain::parse_request("gcc");
-    CHECK(gcc && gcc->family == Family::Gcc && !gcc->range);
+    CHECK((gcc && gcc->family == Family::Gcc && !gcc->range));
     auto clang = toolchain::parse_request("  clang  >=18 ");
-    CHECK(clang && clang->family == Family::Clang && clang->range && clang->text == "clang  >=18");
+    CHECK((clang && clang->family == Family::Clang && clang->range && clang->text == "clang  >=18"));
     CHECK(toolchain::parse_request("apple-clang 16")->family == Family::AppleClang);
     for (const char* compiler : {"g++-14", "clang++", "/usr/bin/g++", "C:/tools/g++.exe", "gcc++"}) {
         CHECK(!toolchain::parse_request(compiler).has_value());
@@ -198,7 +198,7 @@ TEST(builds_with_each_compiler_family_the_machine_has) {
         std::vector<toolchain::Found> found = toolchain::list_compilers(t.path() / "home");
         if (toolchain::best_match(found, *toolchain::parse_request(family))) families.push_back(family);
     }
-    MESSAGE("compiler families here: " << str::join(families, ", "));
+    INFO("compiler families here: {}", str::join(families, ", "));
     CHECK(!families.empty());
 #ifdef __linux__
     if (env::is_set("GITHUB_ACTIONS")) CHECK_EQ(families.size(), 2u);  // CI's Linux runners must test both

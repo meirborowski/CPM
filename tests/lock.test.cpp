@@ -63,11 +63,11 @@ TEST(stale_when_the_manifest_changes) {
         return lock::staleness(lock, m, read_path);
     };
     auto changed_spec = stale_after("\"^10.2.0\"", "\"^10.3.0\"");
-    CHECK(changed_spec.has_value() && changed_spec->contains("specifier of \"fmt\" changed"));
+    CHECK((changed_spec.has_value() && changed_spec->contains("specifier of \"fmt\" changed")));
     auto added = stale_after("\"doctest\": \"^2.4.11\",", "\"doctest\": \"^2.4.11\", \"extra\": \"^1\",");
-    CHECK(added.has_value() && added->contains("\"extra\" is not in the lockfile"));
+    CHECK((added.has_value() && added->contains("\"extra\" is not in the lockfile")));
     auto removed = stale_after("\"mylib\": \"file:../mylib\",", "");
-    CHECK(removed.has_value() && removed->contains("\"mylib\" was removed"));
+    CHECK((removed.has_value() && removed->contains("\"mylib\" was removed")));
 }
 
 TEST(stale_when_a_path_package_changes) {
@@ -79,7 +79,7 @@ TEST(stale_when_a_path_package_changes) {
         return mm;
     };
     auto why = lock::staleness(lock, m, bumped);
-    CHECK(why.has_value() && why->contains("changed its version"));
+    CHECK((why.has_value() && why->contains("changed its version")));
 }
 
 TEST(rejects_corrupt_and_newer_lockfiles) {

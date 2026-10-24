@@ -118,7 +118,7 @@ TEST(path_and_git_dependencies_end_to_end) {
     if (!lock) return;
     CHECK_EQ(lock->packages.size(), 2u);
     const lock::Package* g = lock->find("greet");
-    CHECK(g != nullptr && std::get<lock::GitResolution>(g->resolution).commit.size() == 40u);
+    CHECK((g != nullptr && std::get<lock::GitResolution>(g->resolution).commit.size() == 40u));
     CHECK(fsx::is_link(app / "cpm_modules" / "greet" / "include"));
     CHECK(fsx::is_link(app / "cpm_modules" / "greet" / "lib"));
     CHECK(fs::exists(app / "cpm_modules" / "mylib" / "include" / "mylib" / "mylib.hpp"));

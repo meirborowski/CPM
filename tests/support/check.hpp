@@ -1,22 +1,22 @@
 #pragma once
 
-// CPM's tests run on doctest, a devDependency that CPM installs for itself (see "devDependencies" in
-// cpm.jsonc). This header keeps the small vocabulary the tests are written in:
-//   TEST(name) { ... }, CHECK(expr), CHECK_EQ(a, b), CHECK_THROWS(expr, "part of the message"),
+// CPM's tests run on cpm-test (https://github.com/cpm-org/cpm-test), a devDependency that CPM installs for itself (see
+// "devDependencies" in cpm.jsonc). This header keeps the small vocabulary the tests are written in:
+//   TEST(name) { ... }, CHECK(expr), CHECK_EQ(a, b), CHECK_THROWS(expr, "part of the message"), INFO(format, args...),
 //   check::fail(file, line, message) and check::TempDir.
-// Each tests/*.test.cpp is its own executable: include this header once. Exit code 0 = all passed
-// (docs/spec/build.md §7).
-// On macOS doctest's implementation includes <sys/sysctl.h>, which declares a global `struct proc`. Next to
-// `using namespace cpm;` a plain `proc::` is then ambiguous, so tests spell out `cpm::proc::`.
+// CHECK shows both values of a failed comparison. Like cpm-test's own CHECK, it takes no unparenthesized && or ||:
+// write CHECK((a && b)), or two CHECKs. Each tests/*.test.cpp is its own executable, and cpm-test supplies its main().
+// Exit code 0 = all passed (docs/spec/build.md §7).
 
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <doctest/doctest.h>
+#define CPM_TEST_NO_SHORT_MACROS  // this header defines the names the tests use
+#include <cpm/test.hpp>
 
 #include <chrono>
 #include <cstdio>
 #include <exception>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <random>
 #include <string>
 #include <thread>
@@ -27,7 +27,28 @@
 namespace check {
 
 // Records a failure at file:line and lets the test case go on.
-inline void fail(const char* file, int line, const std::string& message) { ADD_FAIL_CHECK_AT(file, line, message); }
+inline void fail(const char* file, int line, const std::string& message) {
+    ::cpm::test::detail::fail_and_continue(file, line, message);
+}
+
+// What `fn` threw: the message of a std::exception or of a thrown string. nullopt when it threw nothing.
+template <typename Fn>
+std::optional<std::string> thrown_message(Fn&& fn) {
+    try {
+        fn();
+    } catch (const ::cpm::test::detail::Stop&) {
+        throw;  // a failed REQUIRE ends the test case
+    } catch (const std::exception& e) {
+        return std::string(e.what());
+    } catch (const std::string& s) {
+        return s;
+    } catch (const char* s) {
+        return std::string(s);
+    } catch (...) {
+        return std::string("(an exception that is not a std::exception)");
+    }
+    return std::nullopt;
+}
 
 // A fresh empty directory, removed when the object goes away.
 class TempDir {
@@ -64,14 +85,25 @@ private:
 
 }  // namespace check
 
-#define TEST(name) TEST_CASE(#name)
+#define TEST(name) CPM_TEST_CASE(#name)
 
-// Any boolean expression, including && and || (doctest's own CHECK only decomposes simple comparisons).
-#undef CHECK
-#define CHECK(...) DOCTEST_CHECK((__VA_ARGS__))
+#define CHECK(...) CPM_TEST_CHECK(__VA_ARGS__)
 
-// doctest's CHECK_EQ already prints both sides on failure.
+// Shows both sides when they differ.
+#define CHECK_EQ(a, b) CPM_TEST_CHECK((a) == (b))
 
-// The exception's what() must contain `substring`.
-#undef CHECK_THROWS
-#define CHECK_THROWS(expr, substring) DOCTEST_CHECK_THROWS_WITH(expr, doctest::Contains(substring))
+// The expression must throw, with a message that contains `substring`.
+#define CHECK_THROWS(expr, substring)                                                                                  \
+    do {                                                                                                               \
+        const std::optional<std::string> check_thrown_ = ::check::thrown_message([&] { static_cast<void>(expr); });   \
+        const std::string check_wanted_(substring);                                                                    \
+        if (!check_thrown_) {                                                                                          \
+            CPM_TEST_FAIL_CHECK("CHECK_THROWS({}) threw nothing", #expr);                                             \
+        } else if (check_thrown_->find(check_wanted_) == std::string::npos) {                                          \
+            CPM_TEST_FAIL_CHECK("CHECK_THROWS({}) threw \"{}\", which does not contain \"{}\"", #expr, *check_thrown_, \
+                                check_wanted_);                                                                        \
+        }                                                                                                              \
+    } while (false)
+
+// Shown with the failures that happen while it is in scope.
+#define INFO(...) CPM_TEST_INFO(__VA_ARGS__)

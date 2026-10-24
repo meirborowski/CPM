@@ -214,8 +214,8 @@ TEST(installs_from_a_registry_with_prebuilt_binaries) {
     install::install(project, {.cwd = app, .add = {"greet"}}, config);
     CHECK(fsx::read_file(app / "cpm.jsonc").contains("\"greet\": \"^1.0.0\""));
     auto lock = lock::load(app, app);
-    CHECK(lock && std::holds_alternative<lock::RegistryResolution>(lock->find("greet")->resolution));
-    CHECK(lock && lock->find("strutil")->type == manifest::TargetKind::HeaderOnly);
+    CHECK((lock && std::holds_alternative<lock::RegistryResolution>(lock->find("greet")->resolution)));
+    CHECK((lock && lock->find("strutil")->type == manifest::TargetKind::HeaderOnly));
     fs::path lib_dir = w / "home1" / "store" / "greet@1.0.0" / "lib" / project.abi.dir();
     CHECK(fs::exists(lib_dir / ".complete"));
 

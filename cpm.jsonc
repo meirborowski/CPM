@@ -15,13 +15,8 @@
 
   // CPM itself has no runtime dependencies, so the bootstrap stays a single compiler call.
   "devDependencies": {
-    // The test framework behind tests/support/check.hpp. Its repository has no cpm.jsonc, so the
-    // overlay describes it: headers only, included as <doctest/doctest.h> from the repository root.
-    "doctest": {
-      "git": "https://github.com/doctest/doctest.git",
-      "tag": "v2.4.11",
-      "manifest": { "type": "header-only", "std": "c++11", "include": "." }
-    }
+    // The test framework behind tests/support/check.hpp: cpm-org's cpm-test, from the default registry.
+    "cpm-test": "^0.1.0"
   },
 
   "profiles": {

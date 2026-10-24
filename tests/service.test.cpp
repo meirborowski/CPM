@@ -103,9 +103,9 @@ TEST(package_details_are_parsed) {
     CHECK_EQ(d.repository, "https://github.com/gabime/spdlog");
     CHECK_EQ(d.homepage, "");  // null is unknown
     CHECK_EQ(d.owners.size(), 2u);  // what is not a login is skipped
-    CHECK(d.downloads.has_value() && *d.downloads == 42);
+    CHECK((d.downloads.has_value() && *d.downloads == 42));
     auto empty = install::service::parse_details(json::parse("{}", json::kStrict));
-    CHECK(empty.owners.empty() && !empty.downloads.has_value() && empty.license.empty());
+    CHECK((empty.owners.empty() && !empty.downloads.has_value() && empty.license.empty()));
 }
 
 TEST(package_details_come_only_from_a_service) {

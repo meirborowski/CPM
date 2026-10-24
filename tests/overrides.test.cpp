@@ -253,9 +253,9 @@ TEST(the_fmt_9_against_fmt_10_example_builds_with_an_override) {
     project = build::load_project(app, "debug", std::nullopt, config);
     install::install(project, {.cwd = app}, config);
     auto lock = lock::load(app, app);
-    CHECK(lock && lock->overrides.at("spdlog>fmt") == "^10.2.0");
-    CHECK(lock && lock->find("spdlog")->overridden.at("fmt") == "^9.1.0");
-    CHECK(lock && lock->find("fmt")->version.to_string() == "10.2.1");
+    CHECK((lock && lock->overrides.at("spdlog>fmt") == "^10.2.0"));
+    CHECK((lock && lock->find("spdlog")->overridden.at("fmt") == "^9.1.0"));
+    CHECK((lock && lock->find("fmt")->version.to_string() == "10.2.1"));
 
     build::BuildRequest req;
     req.cwd = app;

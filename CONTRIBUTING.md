@@ -16,14 +16,14 @@ build/release/cpm test
 
 The result is `build/release/cpm` (`cpm.exe` on Windows). From then on, develop with it: `cpm build`, `cpm test`, `cpm run`.
 
-CPM's tests use [doctest](https://github.com/doctest/doctest), a devDependency that CPM installs for itself, so the first build needs network access once. `scripts/selfhost.ps1` (or `scripts/selfhost.sh`) runs the full stage 0 → 1 → 2 self-hosting check that CI runs.
+CPM's tests use [cpm-test](https://github.com/cpm-org/cpm-test), a devDependency that CPM installs for itself from the default registry, so the first build needs network access once. `scripts/selfhost.ps1` (or `scripts/selfhost.sh`) runs the full stage 0 → 1 → 2 self-hosting check that CI runs.
 
 ## Layout
 
 | Path | Contents |
 |---|---|
 | `src/` | CPM's source, one module per directory: `cli/`, `init/`, `run/`, `install/`, `publish/`, `build/`, `toolchain/`, `lock/`, `manifest/`, `json/`, `semver/`, `core/` |
-| `tests/` | Tests on doctest, one executable per `*.test.cpp` |
+| `tests/` | Tests on cpm-test, one executable per `*.test.cpp`; `support/check.hpp` holds the macros they use |
 | `scripts/` | Bootstrap (stage 0) and the self-hosting check |
 | `docs/spec/` | The specification |
 | `schema/` | JSON Schemas for `cpm.jsonc`, `cpm-lock.json` and registry indexes |

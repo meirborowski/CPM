@@ -1,6 +1,6 @@
 # Roadmap to CPM 0.5.0
 
-**0.5.0: CPM handles real projects on every major toolchain.** You can pick the compiler, including MSVC; depend on the C and C++ libraries projects actually use, prebuilt where possible; understand and fix conflicts in your dependencies; keep several packages in one repository; and inspect what you depend on.
+**0.5.0: CPM handles real projects on every major toolchain.** You can pick the compiler, including MSVC; depend on CPM's own libraries from the registry and on any C or C++ library straight from git, prebuilt where possible; understand and fix conflicts in your dependencies; keep several packages in one repository; and inspect what you depend on.
 
 We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on its own and ships with notes in [CHANGELOG.md](CHANGELOG.md). Each lands in the same way: spec first ([docs/spec](docs/spec/README.md)), then code and tests, CI green on every platform, a changelog section, a tag, and the [installer check](.github/workflows/installer.yml) installing the new version on fresh machines.
 
@@ -10,8 +10,8 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 | 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together (released 2026-10-20) |
 | 0.4.3 | Version overrides | Force a version when you know a dependency works with it (released 2026-10-20) |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command (released 2026-10-21) |
-| 0.4.5 | C sources | Compile `.c` files, so C libraries can be packaged |
-| 0.4.6 | More libraries | About 30 packages on cpm-registry.com, C libraries included |
+| 0.4.5 | C sources | Compile `.c` files, in projects and in C libraries from git |
+| 0.4.6 | CPM-native libraries | cpm-org's own JSON, logging, arguments and benchmark libraries on cpm-registry.com |
 | 0.4.7 | Prebuilt binaries | Installs download built libraries instead of compiling them |
 | 0.4.8 | MSVC, part 1 | Build and test with Visual Studio's compiler |
 | 0.4.9 | MSVC, part 2 | Shared libraries, dependencies and prebuilt binaries with MSVC |
@@ -23,7 +23,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 The order follows dependencies:
 - The first three releases are about understanding and fixing your dependency graph, and they build on each other. `cpm why` shows who needs what, the new resolver explains conflicts, and overrides are built on that resolver.
 - Choosing the compiler comes before MSVC, which is then one more compiler to choose.
-- C sources come before the catalog grows into C libraries, and prebuilt binaries before MSVC, so MSVC's binaries ride on them.
+- C sources come first, so C libraries can be built straight from git. The cpm-org libraries come before prebuilt binaries, which then have packages to build, and prebuilt binaries come before MSVC, so MSVC's binaries ride on them.
 - Symbol isolation comes after MSVC, because on MSVC it needs the shared-library support from MSVC part 2.
 - Workspaces stand alone and could move earlier.
 
@@ -80,18 +80,30 @@ Done when the choice order is specified in build.md and cli.md, and tested with 
 
 `.c` files are compiled with the C compiler that matches the chosen C++ compiler. A `"cstd"` field sets the C standard. Profiles, defines and include paths apply to C as well, and ABI fingerprints account for the C compiler. Mixed C and C++ targets link correctly, and C libraries can be published and installed like any other.
 
-Done when a pure C library, a mixed C/C++ program and a C++ program that depends on a C library build and test on every platform, and zlib builds from a `cpm.jsonc`.
+Done when a pure C library, a mixed C/C++ program and a C++ program that depends on a C library build and test on every platform, and a C++ program uses zlib as a git dependency, with an overlay ([manifest.md §8](docs/spec/manifest.md#8-manifest-overlays)) that lists zlib's sources.
 
-## 0.4.6: More libraries
+## 0.4.6: CPM-native libraries
 
-Grow cpm-registry.com from 6 packages to about 30, chosen by what C++ projects use most:
+cpm-registry.com holds only libraries written for CPM. It doesn't republish other people's libraries, so fmt, spdlog and the other packages it started with are gone. Those libraries are still usable as git dependencies, with an overlay when their repository has no `cpm.jsonc`.
 
-- C libraries: zlib, sqlite, libpng, zstd, lz4;
-- C++ libraries: magic_enum, glm, Eigen, toml++, cxxopts, range-v3, GoogleTest, Google Benchmark, and more.
+CPM's own libraries live in the [cpm-org](https://github.com/cpm-org) GitHub organization, one repository each. Each is original code with its own API, not a clone of an existing library:
 
-Each gets a seed recipe and a smoke test (cpm-registry's `seed/`). Whatever CPM is missing to package them gets fixed in CPM, which is why this is a release and not only registry work.
+- named `cpm-<thing>`, with the header `<cpm/<thing>.hpp>` and the namespace `cpm::<thing>`;
+- C++20 and MIT-licensed;
+- built only with its `cpm.jsonc` and tested with `cpm test`, with CI on Linux, macOS and Windows that installs CPM through the installer.
 
-Done when every package installs and runs its smoke test from an empty CPM home, on Linux, macOS and Windows.
+[cpm-test](https://github.com/cpm-org/cpm-test) 0.1.0 is out, and CPM's own tests run on it. This release adds the libraries most programs reach for next. They're built one at a time, each published before the next starts:
+
+- cpm-json: reading and writing JSON;
+- cpm-log: logging;
+- cpm-args: command-line arguments;
+- cpm-bench: micro-benchmarks.
+
+Whatever CPM is missing to build, test and publish them gets fixed in CPM, which is why this is a release and not only library work.
+
+More libraries follow after 0.4.6, in this order: hash maps, enum reflection, TOML, YAML, XML, compression (deflate and gzip), fast hashing, graphics math, images, a thread pool, networking and HTTP, linear algebra, and Unicode. Libraries aren't planned where the C++ standard library already covers the job, such as formatting and ranges, or where they're too large or too risky to write from scratch, such as a database engine or cryptography and TLS.
+
+Done when cpm-json, cpm-log, cpm-args and cpm-bench are published on cpm-registry.com, each installs from an empty CPM home and passes its tests on Linux, macOS and Windows, and the README and the registry's website list them.
 
 ## 0.4.7: Prebuilt binaries
 
@@ -99,10 +111,10 @@ The store and the protocol already accept prebuilt binaries ([registry.md §4.2]
 
 - `cpm publish --with-binary` adds a binary built with the publisher's toolchain, tagged with its ABI fingerprint.
 - The registry service stores and serves binary archives next to source archives, within its storage limits.
-- A cpm-registry workflow builds binaries of popular packages for the common toolchains: GCC on Linux, Apple Clang on macOS and MinGW GCC on Windows.
+- A cpm-registry workflow builds binaries of the cpm-org libraries for the common toolchains: GCC on Linux, Apple Clang on macOS and MinGW GCC on Windows.
 - `cpm install` uses a matching binary, and builds from source otherwise, as it does today.
 
-Done when installing fmt and spdlog on a common toolchain downloads binaries and builds nothing, and every other toolchain still builds from source.
+Done when installing cpm-json and cpm-log on a common toolchain downloads binaries and builds nothing, and every other toolchain still builds from source.
 
 ## 0.4.8: MSVC, part 1
 
@@ -122,7 +134,7 @@ Done when CPM's own tests pass when CPM is built with MSVC, and CI runs a Window
 - `cpm setup` on Windows can install Visual Studio Build Tools (through winget, after asking), as an alternative to WinLibs GCC.
 - Prebuilt binaries for MSVC from the cpm-registry workflow.
 
-Done when the catalog's packages install and pass their smoke tests with MSVC.
+Done when the cpm-org libraries install and pass their tests with MSVC.
 
 ## 0.4.10: Symbol isolation
 

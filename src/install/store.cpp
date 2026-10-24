@@ -9,9 +9,9 @@
 #include "core/fsx.hpp"
 #include "core/log.hpp"
 #include "core/paths.hpp"
-#include "core/proc.hpp"
 #include "core/sha256.hpp"
 #include "core/strings.hpp"
+#include "core/system_tar.hpp"
 #include "install/fetch.hpp"
 #include "install/git.hpp"
 #include "json/parse.hpp"
@@ -204,11 +204,7 @@ fs::path ensure_git_entry(const fs::path& home, const lock::Package& p, const st
         fs::path tar = tmp / "src.tar";
         git::archive(mirror, git.commit, tar);
         fs::path pkg = tmp / "pkg";
-        fsx::create_dirs(pkg);
-        auto tar_exe = proc::find_program("tar");
-        if (!tar_exe) throw Error("extracting packages needs tar, which was not found on PATH");
-        proc::Captured r = proc::capture({.argv = {paths::to_utf8(*tar_exe), "-xf", paths::to_utf8(tar), "-C", paths::to_utf8(pkg)}});
-        if (r.exit_code != 0) throw Error(std::format("cannot extract {}:\n{}", name, r.err));
+        system_tar::extract({.archive = tar, .dest = pkg}, name);
         check_tree(pkg, name);
 
         std::string marker = complete_marker(pkg);

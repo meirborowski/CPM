@@ -6,7 +6,7 @@
 #include <vector>
 
 // Writing .tar.gz archives without any third-party code, for `cpm publish` (docs/spec/registry.md §6).
-// Reading them stays with the system `tar`.
+// Reading them stays with the system `tar` (core/system_tar).
 namespace cpm::archive {
 
 // One member of a tar archive. `path` is relative and '/'-separated, without a trailing '/'.

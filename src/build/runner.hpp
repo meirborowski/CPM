@@ -27,7 +27,7 @@ int run_ninja(const NinjaRun& run);
 // `ninja -n`: the commands Ninja would run, as printed (one status line per edge).
 std::string dry_run(const NinjaRun& run);
 
-// Writes <root>/compile_commands.json from `ninja -t compdb cxx` if it changed.
+// Writes <root>/compile_commands.json from `ninja -t compdb cxx cc` if it changed.
 void update_compile_commands(const NinjaRun& run);
 
 }  // namespace cpm::build

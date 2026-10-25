@@ -35,7 +35,7 @@ TEST(matches_the_spec_example) {
     auto driver = toolchain::make_driver(tc);
     auto fp = toolchain::fingerprint(tc, *driver, manifest::builtin_profiles().at("debug"), "c++23", {}, {});
     CHECK_EQ(fp.canonical(),
-             "abi.scheme=1\narch=x86_64\ncompiler=gcc\ncompiler.version=13.2.0\ncrt=ucrt\ndefines.abi=\neh=seh\n"
+             "abi.scheme=2\narch=x86_64\ncompiler=gcc\ncompiler.version=13.2.0\ncrt=ucrt\ndefines.abi=\neh=seh\n"
              "exceptions=on\nos=windows\npic=false\nrtti=on\nruntime=dynamic\nsanitizers=\nstd=c++23\n"
              "stdlib=libstdc++\nstdlib.abi=cxx11\ntarget=x86_64-w64-mingw32\nthreads=posix\n");
     CHECK_EQ(fp.hash.size(), 64u);

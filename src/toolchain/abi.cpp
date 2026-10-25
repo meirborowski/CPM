@@ -44,7 +44,7 @@ AbiFingerprint fingerprint(const Toolchain& tc, const Driver& driver, const mani
         if (value.find('\n') != std::string::npos) throw Error("internal error: ABI input with a newline");
         fp.inputs.emplace_back(std::move(key), std::move(value));
     };
-    add("abi.scheme", "1");
+    add("abi.scheme", "2");
     add("os", std::string(to_string(tc.os)));
     add("arch", tc.arch);
     add("target", tc.target);

@@ -18,6 +18,7 @@
     "keywords": { "type": "array", "items": { "type": "string" } },
     "private": { "type": "boolean", "description": "true makes `cpm publish` refuse the package." },
     "std": { "$ref": "#/definitions/std" },
+    "cstd": { "$ref": "#/definitions/cstd" },
     "type": { "$ref": "#/definitions/targetType" },
     "toolchain": {
       "description": "The compiler the project asks for: a family and an optional version range, or several in order of preference (docs/spec/build.md §1.1).",
@@ -64,6 +65,10 @@
       "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
     },
     "std": { "enum": ["c++11", "c++14", "c++17", "c++20", "c++23", "c++26"] },
+    "cstd": {
+      "description": "C standard for this package's .c files; every package uses its own. Default: gnu17 (docs/spec/manifest.md §3.3).",
+      "enum": ["c89", "c99", "c11", "c17", "c23", "gnu89", "gnu99", "gnu11", "gnu17", "gnu23"]
+    },
     "toolchainRequest": { "type": "string", "pattern": "^\\s*(gcc|clang|apple-clang)(\\s+\\S.*)?$" },
     "targetType": { "enum": ["executable", "static-lib", "shared-lib", "header-only"] },
     "globList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
@@ -138,6 +143,7 @@
         "version": { "$ref": "#/definitions/semver" },
         "type": { "enum": ["static-lib", "shared-lib", "header-only"] },
         "std": { "$ref": "#/definitions/std" },
+        "cstd": { "$ref": "#/definitions/cstd" },
         "main": { "type": "string", "minLength": 1 },
         "sources": { "$ref": "#/definitions/globList" },
         "include": { "type": "string", "minLength": 1 },
@@ -184,6 +190,7 @@
         "warnings": { "enum": ["none", "default", "strict"] },
         "werror": { "type": "boolean" },
         "defines": { "$ref": "#/definitions/defineList" },
+        "cflags": { "$ref": "#/definitions/flagList" },
         "cxxflags": { "$ref": "#/definitions/flagList" },
         "ldflags": { "$ref": "#/definitions/flagList" }
       }
@@ -196,6 +203,7 @@
         "publicDefines": { "$ref": "#/definitions/defineList" },
         "systemLibs": { "$ref": "#/definitions/systemLibList" },
         "sources": { "$ref": "#/definitions/globList" },
+        "cflags": { "$ref": "#/definitions/flagList" },
         "cxxflags": { "$ref": "#/definitions/flagList" },
         "ldflags": { "$ref": "#/definitions/flagList" }
       }

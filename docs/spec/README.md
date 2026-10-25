@@ -64,5 +64,5 @@ Worked examples are in [`examples/`](examples).
 | `cpm-lock.json` | `lockfileVersion` | `1` |
 | Registry | `config.json` → `apiVersion` | `1` |
 | Store layout | `$CPM_HOME/store/.layout-version` | `1` |
-| ABI fingerprint scheme | `abi.scheme` input | `1` |
+| ABI fingerprint scheme | `abi.scheme` input | `2` |
 | `cpm_modules/.cpm-modules.json` | `cpmModulesVersion` | `1` |

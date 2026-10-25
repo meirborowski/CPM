@@ -62,7 +62,7 @@ store/fmt@10.2.1/
   "package": { "name": "fmt", "version": "10.2.1", "integrity": "sha256:493805ec…" },
   "abi": {
     "hash": "3f9a1c2b7d4e5a60c1…(64 hex)",
-    "inputs": { "abi.scheme": "1", "arch": "x86_64", "compiler": "gcc", "…": "…" }
+    "inputs": { "abi.scheme": "2", "arch": "x86_64", "compiler": "gcc", "…": "…" }
   },
   "artifacts": [
     { "kind": "static-lib", "file": "libfmt.a" }

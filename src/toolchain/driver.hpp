@@ -7,11 +7,12 @@
 #include <vector>
 
 #include "manifest/profile.hpp"
+#include "toolchain/language.hpp"
 #include "toolchain/toolchain.hpp"
 
 namespace cpm::toolchain {
 
-// A Ninja rule. Commands may use $cxx, $ar, $cxxflags, $defines, $incs, $ldflags and $libs.
+// A Ninja rule. Commands may use $cxx, $cc, $ar, $cxxflags, $cflags, $defines, $incs, $ldflags and $libs.
 struct NinjaRule {
     std::string name;
     std::string command;
@@ -34,8 +35,10 @@ class Driver {
 public:
     virtual ~Driver() = default;
 
-    virtual std::vector<NinjaRule> rules() const = 0;  // cxx, ar, link, link_shared
-    virtual ProfileFlags profile_flags(const manifest::Profile& profile, const std::string& std_flag,
+    virtual std::vector<NinjaRule> rules() const = 0;  // cxx, cc, ar, link, link_shared
+    // The profile's flags for compiling `language` with the standard `std_flag` (build.md §3). The link flags don't
+    // depend on the language: every link uses the C++ driver (build.md §1.2).
+    virtual ProfileFlags profile_flags(const manifest::Profile& profile, Language language, const std::string& std_flag,
                                        bool pic) const = 0;
     // The profile's sanitizers that this toolchain supports (the others are dropped with a warning).
     virtual std::vector<std::string> sanitizers(const manifest::Profile& profile) const = 0;

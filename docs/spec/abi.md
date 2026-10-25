@@ -9,7 +9,7 @@ Inputs marked "always" are present for every toolchain. Values are lowercase ASC
 
 | Key | When | Values / source |
 |---|---|---|
-| `abi.scheme` | always | `1`. Bumped whenever this table changes meaning, which invalidates every cached binary. |
+| `abi.scheme` | always | `2`. Bumped whenever this table changes meaning, which invalidates every cached binary. Scheme `2` (CPM 0.4.5) compiles `.c` sources as C. Scheme `1` compiled them as C++, so a package with `.c` sources built under it can differ. |
 | `os` | always | `windows`, `linux`, `macos`, `freebsd` (CPM's compile-time platform, cross-checked with the target triple) |
 | `arch` | always | `x86_64`, `aarch64`, `x86`, `arm` (from the target triple) |
 | `target` | always | The compiler's target triple: `-dumpmachine` (GCC/Clang). For MSVC: `<arch>-pc-windows-msvc` |
@@ -31,6 +31,8 @@ Inputs marked "always" are present for every toolchain. Values are lowercase ASC
 
 **Not included,** because these settings do not affect binary compatibility of static code: optimisation level, debug info, warnings, `werror`, LTO (dependencies are never LTO-compiled), and non-ABI definitions.
 
+**C sources add no inputs.** The C compiler always reports the same family, version and target as the C++ compiler ([build.md §1.2](build.md#12-family-and-companion-tools)), so `compiler`, `compiler.version` and `target` describe both, and `crt` is the C runtime both use. `cstd` isn't an input either: each package compiles its C code with its own `cstd`, whatever the consumer uses, and C's ABI doesn't depend on it ([manifest.md §3.3](manifest.md#33-cstd-semantics)). A pure C library's fingerprint still has the C++ inputs (`std`, `stdlib`, `exceptions` and so on). Changing them rebuilds it, which costs time but never gives a wrong binary.
+
 ## 2. ABI-affecting definitions
 
 A definition counts toward `defines.abi` if its name (the part before `=`) is in this list:
@@ -41,7 +43,7 @@ _LIBCPP_ABI_VERSION  _LIBCPP_ABI_UNSTABLE  _LIBCPP_HARDENING_MODE
 _ITERATOR_DEBUG_LEVEL  _HAS_ITERATOR_DEBUGGING  _SECURE_SCL  _HAS_EXCEPTIONS
 ```
 
-or if it starts with `_LIBCPP_ABI_`. The list is part of `abi.scheme` `1`.
+or if it starts with `_LIBCPP_ABI_`. The list is part of `abi.scheme` `2`, unchanged from `1`.
 
 ## 3. Canonical encoding and hash
 
@@ -54,7 +56,7 @@ or if it starts with `_LIBCPP_ABI_`. The list is part of `abi.scheme` `1`.
 **Example** for this host (MinGW-w64 g++ 13.2.0, UCRT, posix threads, SEH, `std: c++23`, debug profile):
 
 ```
-abi.scheme=1
+abi.scheme=2
 arch=x86_64
 compiler=gcc
 compiler.version=13.2.0

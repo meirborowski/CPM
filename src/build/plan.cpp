@@ -13,6 +13,17 @@ namespace cpm::build {
 namespace {
 
 using manifest::TargetKind;
+using toolchain::Language;
+
+bool any_c(const std::vector<std::string>& sources) {
+    return std::any_of(sources.begin(), sources.end(),
+                       [](const std::string& s) { return toolchain::language_of(s) == Language::C; });
+}
+
+bool has_c(const Layout& layout) {
+    return any_c(layout.sources) || any_c(layout.tests) ||
+           (layout.entry && toolchain::language_of(*layout.entry) == Language::C);
+}
 
 void append(std::vector<std::string>& to, const std::vector<std::string>& from) {
     to.insert(to.end(), from.begin(), from.end());
@@ -53,6 +64,23 @@ std::string test_name(const std::string& test_source) {
 
 }  // namespace
 
+std::vector<std::string> c_standards(const manifest::Manifest& m, const Layout& layout,
+                                     const std::vector<Dependency>& dependencies) {
+    std::vector<std::string> out;
+    if (has_c(layout)) out.push_back(m.cstd);
+    for (const auto& d : dependencies) {
+        if (d.sources && any_c(d.sources->files)) out.push_back(d.sources->cstd);
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
+}
+
+bool compiles_c(const BuildPlan& plan) {
+    return std::any_of(plan.compiles.begin(), plan.compiles.end(),
+                       [](const CompileStep& c) { return c.language == Language::C; });
+}
+
 std::string object_path(const std::string& build_dir, const std::string& source, const std::string& ext) {
     std::string rel;
     for (const auto& part : paths::from_utf8(source)) {
@@ -67,7 +95,7 @@ std::string object_path(const std::string& build_dir, const std::string& source,
 }
 
 BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profile, const toolchain::Toolchain& tc,
-                    const std::string& std_flag, const toolchain::Driver& driver, const Layout& layout,
+                    const StandardFlags& standards, const toolchain::Driver& driver, const Layout& layout,
                     const std::vector<Dependency>& dependencies) {
     BuildPlan plan;
     plan.root = m.root;
@@ -82,12 +110,23 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
 
     manifest::PlatformOverrides platform = manifest::effective_platform(m, tc.os);
     bool pic = layout.kind == TargetKind::SharedLib;
-    toolchain::ProfileFlags pf = driver.profile_flags(profile, std_flag, pic);
+    toolchain::ProfileFlags pf = driver.profile_flags(profile, Language::Cxx, standards.cxx, pic);
     append(plan.notes, pf.notes);
 
     plan.cxxflags = pf.compile;
     append(plan.cxxflags, platform.cxxflags);
     append(plan.cxxflags, profile.cxxflags);
+
+    // C is compiled with the same profile, each package's C with its own standard (build.md §3).
+    auto c_flags = [&](const std::string& cstd) {
+        auto flag = standards.c.find(cstd);
+        if (flag == standards.c.end()) throw Error(std::format("internal error: no flag for the C standard {}", cstd));
+        std::vector<std::string> flags = driver.profile_flags(profile, Language::C, flag->second, pic).compile;
+        append(flags, platform.cflags);
+        append(flags, profile.cflags);
+        return flags;
+    };
+    if (has_c(layout)) plan.cflags = c_flags(m.cstd);
 
     std::vector<std::string> assertion_defines;
     if (!profile.assertions) assertion_defines.push_back("NDEBUG");
@@ -133,10 +172,13 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
             for (const auto& dir : d.sources->include_dirs) incs.push_back(driver.include_flag(dir));
             for (const auto& def : merge_defines({assertion_defines, profile.defines, d.sources->defines}))
                 defines.push_back(driver.define_flag(def));
+            std::vector<std::string> cflags = any_c(d.sources->files) ? c_flags(d.sources->cstd) : std::vector<std::string>{};
             for (const auto& file : d.sources->files) {
                 std::string obj = object_path(std::format("{}/obj/deps/{}", plan.build_dir, d.name), file, ext);
                 std::string src = d.sources->root.empty() ? file : d.sources->root + "/" + file;
-                plan.compiles.push_back({src, obj, CompileStep::Kind::Dependency, incs, defines});
+                Language language = toolchain::language_of(file);
+                plan.compiles.push_back({src, obj, CompileStep::Kind::Dependency, language, incs, defines,
+                                         language == Language::C ? cflags : std::vector<std::string>{}});
                 ar.members.push_back(obj);
             }
             inputs.push_back(ar.output);
@@ -157,7 +199,7 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
     std::vector<std::string> core_objects;
     for (const auto& src : layout.sources) {
         std::string obj = object_path(plan.build_dir, src, ext);
-        plan.compiles.push_back({src, obj, CompileStep::Kind::Core});
+        plan.compiles.push_back({src, obj, CompileStep::Kind::Core, toolchain::language_of(src)});
         core_objects.push_back(obj);
     }
 
@@ -170,7 +212,7 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
     switch (layout.kind) {
         case TargetKind::Executable: {
             std::string entry_obj = object_path(plan.build_dir, *layout.entry, ext);
-            plan.compiles.push_back({*layout.entry, entry_obj, CompileStep::Kind::Entry});
+            plan.compiles.push_back({*layout.entry, entry_obj, CompileStep::Kind::Entry, toolchain::language_of(*layout.entry)});
             LinkStep link;
             link.name = m.name;
             link.output = std::format("{}/{}", plan.out_dir, driver.exe_file(m.name));
@@ -229,7 +271,7 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
 
     for (const auto& test_src : layout.tests) {
         std::string obj = object_path(plan.build_dir, test_src, ext);
-        plan.compiles.push_back({test_src, obj, CompileStep::Kind::Test});
+        plan.compiles.push_back({test_src, obj, CompileStep::Kind::Test, toolchain::language_of(test_src)});
         LinkStep link;
         link.name = test_name(test_src);
         link.output = std::format("{}/tests/{}", plan.out_dir, driver.exe_file(link.name));

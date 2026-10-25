@@ -46,14 +46,14 @@ bool valid_package_name(std::string_view name) {
 
 namespace {
 
-constexpr std::array<std::string_view, 25> kTopLevelKeys = {
+constexpr std::array<std::string_view, 26> kTopLevelKeys = {
     "name",    "version",       "description",  "license",    "authors",  "repository",   "homepage",
-    "keywords", "private",      "std",          "type",       "main",     "sources",      "include",
-    "defines", "publicDefines", "systemLibs",   "files",      "scripts",  "dependencies", "devDependencies",
-    "overrides", "profiles",    "platforms",    "toolchain"};
+    "keywords", "private",      "std",          "cstd",       "type",     "main",         "sources",
+    "include", "defines",       "publicDefines", "systemLibs", "files",   "scripts",      "dependencies",
+    "devDependencies", "overrides", "profiles", "platforms",  "toolchain"};
 
-constexpr std::array<std::string_view, 6> kPlatformKeys = {"defines",  "publicDefines", "systemLibs",
-                                                            "sources",  "cxxflags",      "ldflags"};
+constexpr std::array<std::string_view, 7> kPlatformKeys = {"defines", "publicDefines", "systemLibs", "sources",
+                                                            "cflags",  "cxxflags",      "ldflags"};
 
 void check_defines(Checker& c, const json::Value& obj, std::string_view key, std::vector<std::string>& out) {
     auto values = c.strings(obj, key);
@@ -270,6 +270,17 @@ Manifest parse(std::string text, const fs::path& file, std::string display) {
         } else {
             m.std = *s;
         }
+        m.std_declared = true;
+    }
+    if (auto s = c.string(root, "cstd")) {
+        if (std::find(known_c_standards().begin(), known_c_standards().end(), *s) == known_c_standards().end()) {
+            c.error(root.find("cstd")->span(), std::format("unknown C standard \"{}\"", *s),
+                    "use c89, c99, c11, c17 or c23, or a GNU dialect such as gnu17");
+        } else {
+            m.cstd = *s;
+        }
+        // A C library needs no particular C++ standard (manifest.md §3.2).
+        if (!m.std_declared) m.std = "c++11";
     }
     if (auto t = c.string(root, "type")) {
         if (auto kind = parse_target_kind(*t)) {
@@ -390,6 +401,7 @@ Manifest parse(std::string text, const fs::path& file, std::string display) {
             check_defines(c, p.value, "publicDefines", o.public_defines);
             check_system_libs(c, p.value, o.system_libs);
             o.sources = c.strings(p.value, "sources").value_or(std::vector<std::string>{});
+            o.cflags = c.strings(p.value, "cflags").value_or(std::vector<std::string>{});
             o.cxxflags = c.strings(p.value, "cxxflags").value_or(std::vector<std::string>{});
             o.ldflags = c.strings(p.value, "ldflags").value_or(std::vector<std::string>{});
             m.platforms.emplace(p.key, std::move(o));
@@ -468,6 +480,7 @@ PlatformOverrides effective_platform(const Manifest& m, Os os) {
         append(out.public_defines, p.public_defines);
         append(out.system_libs, p.system_libs);
         append(out.sources, p.sources);
+        append(out.cflags, p.cflags);
         append(out.cxxflags, p.cxxflags);
         append(out.ldflags, p.ldflags);
     };

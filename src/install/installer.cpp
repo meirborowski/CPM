@@ -242,6 +242,7 @@ Materialized materialize(const build::Project& project, const lock::Lockfile& lo
             for (const auto* list : std::initializer_list<const std::vector<std::string>*>{&i.manifest.defines, &i.manifest.public_defines, &platform.defines,
                                      &platform.public_defines, &i.trans_defines})
                 s.defines.insert(s.defines.end(), list->begin(), list->end());
+            s.cstd = i.manifest.cstd;
             d.sources = std::move(s);
         }
         out.dependencies.push_back(std::move(d));

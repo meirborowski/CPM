@@ -3,6 +3,7 @@
 #include <format>
 
 #include "build/ninja_writer.hpp"
+#include "core/error.hpp"
 #include "core/paths.hpp"
 #include "version.hpp"
 
@@ -42,9 +43,14 @@ std::string generate_ninja(const BuildPlan& plan, const toolchain::Driver& drive
     w.variable("builddir", ninja::escape_value(plan.build_dir));
     w.newline();
 
+    // The C compiler and its flags appear only when something is C (build.md §4.5).
+    const bool any_c = compiles_c(plan);
+    if (any_c && !plan.toolchain.c) throw Error("internal error: the plan compiles C without a C compiler");
     w.variable("cxx", ninja::args_value({paths::to_utf8(plan.toolchain.cxx)}));
+    if (any_c) w.variable("cc", ninja::args_value({paths::to_utf8(plan.toolchain.c->path)}));
     w.variable("ar", ninja::args_value({paths::to_utf8(plan.toolchain.ar)}));
     w.variable("cxxflags", ninja::args_value(plan.cxxflags));
+    if (any_c) w.variable("cflags", ninja::args_value(plan.cflags));
     w.variable("defines", ninja::args_value(plan.defines));
     w.variable("incs", ninja::args_value(plan.incs));
     w.variable("ldflags", ninja::args_value(plan.ldflags));
@@ -52,6 +58,7 @@ std::string generate_ninja(const BuildPlan& plan, const toolchain::Driver& drive
     w.newline();
 
     for (const auto& rule : driver.rules()) {
+        if (rule.name == "cc" && !any_c) continue;
         w.rule(rule);
         w.newline();
     }
@@ -64,10 +71,11 @@ std::string generate_ninja(const BuildPlan& plan, const toolchain::Driver& drive
         } else if (c.kind == CompileStep::Kind::Dependency) {
             vars.emplace_back("incs", ninja::args_value(c.incs));
             vars.emplace_back("defines", ninja::args_value(c.defines));
+            if (c.language == toolchain::Language::C) vars.emplace_back("cflags", ninja::args_value(c.cflags));
         }
         std::vector<std::string> implicit;
         if (!plan.dependency_stamp.empty()) implicit.push_back(plan.dependency_stamp);
-        w.build({c.object}, "cxx", {c.source}, implicit, vars);
+        w.build({c.object}, c.language == toolchain::Language::C ? "cc" : "cxx", {c.source}, implicit, vars);
     }
     w.newline();
 

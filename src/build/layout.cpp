@@ -15,7 +15,7 @@ namespace fs = std::filesystem;
 using manifest::TargetKind;
 
 std::optional<std::string> find_entry(const fs::path& root, std::string_view stem) {
-    for (const char* ext : {"cpp", "cc", "cxx"}) {
+    for (const char* ext : {"cpp", "cc", "cxx", "c"}) {
         std::string rel = std::format("src/{}.{}", stem, ext);
         std::error_code ec;
         if (fs::is_regular_file(root / paths::from_utf8(rel), ec)) return rel;
@@ -38,7 +38,7 @@ Layout infer_layout(const manifest::Manifest& m, const manifest::PlatformOverrid
     std::vector<std::string> patterns = m.sources.empty() ? manifest::default_sources() : m.sources;
     patterns.insert(patterns.end(), platform.sources.begin(), platform.sources.end());
     std::vector<std::string> all_sources = glob::find(root, patterns);
-    layout.tests = glob::find(root, {"tests/*.test.{cpp,cc,cxx}"});
+    layout.tests = glob::find(root, {"tests/*.test.{cpp,cc,cxx,c}"});
 
     if (m.main) {
         std::string entry = normalize(*m.main);

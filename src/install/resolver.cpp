@@ -873,9 +873,10 @@ Resolution Solver::result() const {
 void check_std(const manifest::Manifest& root, const Resolution& res) {
     const auto& stds = manifest::known_standards();
     auto rank = [&](const std::string& s) { return std::find(stds.begin(), stds.end(), s) - stds.begin(); };
+    const std::string project_std = manifest::project_std(root);
     for (const auto& [name, p] : res.packages) {
-        if (rank(p.meta.manifest.std) > rank(root.std)) {
-            throw Error(std::format("{} requires {}, but the project uses {}", name, p.meta.manifest.std, root.std),
+        if (rank(p.meta.manifest.std) > rank(project_std)) {
+            throw Error(std::format("{} requires {}, but the project uses {}", name, p.meta.manifest.std, project_std),
                         "raise \"std\" in the project's cpm.jsonc");
         }
         if (p.meta.manifest.type == manifest::TargetKind::SharedLib) {

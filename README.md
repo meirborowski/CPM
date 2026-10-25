@@ -135,6 +135,7 @@ hello/
 ├── cpm-lock.json        exact versions (commit it)
 ├── src/main.cpp         the entry point (src/lib.cpp makes a library)
 ├── src/*.cpp            everything else in src/ is compiled and linked in
+├── src/*.c              C files too, as C, with the package's "cstd"
 └── tests/*.test.cpp     each one is a test program for `cpm test`
 ```
 
@@ -225,6 +226,7 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 
 **Works today:**
 - executables, plus static, shared and header-only libraries, in C++11 to C++26;
+- C sources alongside C++, each package with its own C standard, so C libraries such as zlib build from a `cpm.jsonc`;
 - registry, git and path dependencies;
 - a shared build cache, with prebuilt binaries when a registry offers them;
 - publishing, searching the registry, and finding outdated dependencies;
@@ -233,7 +235,7 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - choosing the compiler per machine, project or command, with `cpm toolchain list` showing every compiler CPM finds;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** C sources, CPM's own libraries for JSON, logging, arguments and benchmarks, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.5.
+**Next, on the [road to 0.5.0](ROADMAP.md):** CPM's own libraries for JSON, logging, arguments and benchmarks, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.6.
 
 ## Documentation
 

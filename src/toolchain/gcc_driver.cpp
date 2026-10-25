@@ -19,13 +19,15 @@ public:
                                            : NinjaRule{"ar", "$ar rcs $out @$out.rsp", "AR $out", "", "", "$out.rsp", "$in"};
         return {
             {"cxx", "$cxx -MD -MF $out.d $cxxflags $defines $incs -c $in -o $out", "CXX $in", "$out.d", "gcc", "", ""},
+            {"cc", "$cc -MD -MF $out.d $cflags $defines $incs -c $in -o $out", "CC $in", "$out.d", "gcc", "", ""},
             ar,
             {"link", "$cxx @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
             {"link_shared", "$cxx -shared @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
         };
     }
 
-    ProfileFlags profile_flags(const manifest::Profile& p, const std::string& std_flag, bool pic) const override {
+    ProfileFlags profile_flags(const manifest::Profile& p, Language language, const std::string& std_flag,
+                               bool pic) const override {
         ProfileFlags f;
         f.compile.push_back(std_flag);
         f.compile.push_back(p.opt == "s" ? "-Os" : p.opt == "z" ? "-Oz" : "-O" + p.opt);
@@ -51,9 +53,10 @@ public:
             f.compile.push_back("-Wall");
             f.compile.push_back("-Wextra");
             if (p.warnings == "strict") {
-                for (const char* w : {"-Wpedantic", "-Wshadow", "-Wconversion", "-Wsign-conversion",
-                                      "-Wnon-virtual-dtor", "-Woverloaded-virtual"})
-                    f.compile.push_back(w);
+                for (const char* w : {"-Wpedantic", "-Wshadow", "-Wconversion", "-Wsign-conversion"}) f.compile.push_back(w);
+                if (language == Language::Cxx) {
+                    for (const char* w : {"-Wnon-virtual-dtor", "-Woverloaded-virtual"}) f.compile.push_back(w);
+                }
             }
         }
         if (p.werror) f.compile.push_back("-Werror");

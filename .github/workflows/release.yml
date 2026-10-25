@@ -80,7 +80,7 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/src" -w /src -e CPM_HOME=/tmp/cpm-home -e HOST_IDS="$(id -u):$(id -g)" \
             alpine:3.22 sh -euxc '
-              apk add --no-cache g++ ninja-is-really-ninja git tar ca-certificates
+              apk add --no-cache g++ ninja-is-really-ninja git curl tar ca-certificates
               sh scripts/bootstrap.sh
               cpm_modules/.cache/bootstrap/cpm build --profile ${{ matrix.profile }}
               build/${{ matrix.profile }}/cpm test --profile ${{ matrix.profile }}

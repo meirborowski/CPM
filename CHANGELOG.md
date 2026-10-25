@@ -2,6 +2,34 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.5 — 2026-10-25
+
+Compile C next to C++, so projects can build their own C code and C libraries.
+
+### New
+
+- **`.c` files are compiled as C,** with the C compiler that comes with the chosen C++ compiler: `gcc` next to `g++`, `clang` next to `clang++`, keeping any prefix or version suffix. It must report the same version and target, so C and C++ objects come from one toolchain. `src/main.c` and `src/lib.c` work as entry points and `tests/*.test.c` as tests, and one package can mix C and C++.
+- **`"cstd"`** sets the C standard: `c89` to `c23`, or the GNU dialects `gnu89` to `gnu23`. The default is `gnu17`. Every package's C is compiled with its own `cstd`, because C code often needs the standard it was written for.
+- **C libraries don't hold back the C++ standard.** A package that sets `cstd` and not `std` needs no particular C++ standard, so a C++17 project can use it.
+- **`"cflags"`** in profiles and platform overrides passes raw flags to C compiles, as `cxxflags` does to C++.
+- **C libraries without a `cpm.jsonc` build from git** with an overlay. zlib, for example:
+
+  ```jsonc
+  "zlib": {
+    "git": "https://github.com/madler/zlib.git", "tag": "v1.3.1",
+    "manifest": {
+      "type": "static-lib", "cstd": "gnu99", "sources": ["*.c"], "include": ".",
+      "platforms": { "unix": { "publicDefines": ["HAVE_UNISTD_H"] } }
+    }
+  }
+  ```
+
+### Also
+
+- Links use the C++ compiler, also for programs that are all C.
+- The ABI fingerprint scheme is now `2`, because `.c` files used to be compiled as C++. Dependencies in the store are built again once after upgrading.
+- `compile_commands.json` lists C files too.
+
 ## 0.4.4 — 2026-10-21
 
 Choose the compiler on purpose, and see which one every build uses.

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -8,6 +9,7 @@
 #include "build/layout.hpp"
 #include "manifest/manifest.hpp"
 #include "toolchain/driver.hpp"
+#include "toolchain/language.hpp"
 #include "toolchain/toolchain.hpp"
 
 namespace cpm::build {
@@ -19,8 +21,10 @@ struct CompileStep {
     std::string source;
     std::string object;
     Kind kind = Kind::Core;
-    // Kind::Dependency only: a path dependency's own include and definition flags (replacing the root's).
-    std::vector<std::string> incs{}, defines{};
+    toolchain::Language language = toolchain::Language::Cxx;
+    // Kind::Dependency only: a path dependency's own include and definition flags (replacing the root's), and for
+    // C its own C flags, which carry its own standard (build.md §4.4).
+    std::vector<std::string> incs{}, defines{}, cflags{};
 };
 
 struct ArchiveStep {
@@ -59,6 +63,7 @@ struct Dependency {
         std::vector<std::string> files;         // relative to `root`
         std::vector<std::string> include_dirs;  // relative to the project root
         std::vector<std::string> defines;       // its defines, publicDefines and its dependencies' publicDefines
+        std::string cstd = "gnu17";             // the standard of its C files (manifest.md §3.3)
     };
     std::optional<Sources> sources;
 };
@@ -73,7 +78,7 @@ struct BuildPlan {
     manifest::TargetKind kind = manifest::TargetKind::Executable;
     toolchain::Toolchain toolchain;
 
-    std::vector<std::string> cxxflags, defines, incs, test_incs, test_defines, ldflags, libs;  // ready-made flags
+    std::vector<std::string> cxxflags, cflags, defines, incs, test_incs, test_defines, ldflags, libs;  // ready-made flags
     std::vector<CompileStep> compiles;
     std::optional<ArchiveStep> archive;  // static library
     std::vector<ArchiveStep> dependency_archives;  // path dependencies
@@ -88,10 +93,26 @@ struct BuildPlan {
     std::vector<std::string> notes;
 };
 
-// Turns a manifest, a resolved profile and a probed toolchain into a build plan (docs/spec/build.md §4).
+// The flags that select the standards a plan compiles with, spelled as the compiler accepts them: the project's C++
+// standard, and each C standard that c_standards() lists ("gnu17" -> "-std=gnu17").
+struct StandardFlags {
+    std::string cxx;
+    std::map<std::string, std::string> c{};
+};
+
+// The C standards a build compiles with (manifest.md §3.3): the root's when it has C sources, and each path
+// dependency's that has C sources. Sorted, without duplicates; empty when nothing is C.
+std::vector<std::string> c_standards(const manifest::Manifest& m, const Layout& layout,
+                                     const std::vector<Dependency>& dependencies);
+
+// Turns a manifest, a resolved profile and a probed toolchain into a build plan (docs/spec/build.md §4). When
+// anything is C, tc.c is the C compiler and `standards.c` has a flag for every entry of c_standards().
 BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profile, const toolchain::Toolchain& tc,
-                    const std::string& std_flag, const toolchain::Driver& driver, const Layout& layout,
+                    const StandardFlags& standards, const toolchain::Driver& driver, const Layout& layout,
                     const std::vector<Dependency>& dependencies = {});
+
+// Whether the plan compiles any C, and so needs the C compiler.
+bool compiles_c(const BuildPlan& plan);
 
 // Object file path for a source, inside `build_dir`/obj. Escapes ".." and drive letters.
 std::string object_path(const std::string& build_dir, const std::string& source, const std::string& ext);

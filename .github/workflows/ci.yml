@@ -63,12 +63,14 @@ jobs:
         env:
           CXX: ${{ matrix.cxx }}
           CPM_HOME: ${{ runner.temp }}/cpm-home
+          CPM_TEST_NETWORK: 1  # tests that fetch from github.com, such as zlib (tests/c_sources.test.cpp)
         run: ./scripts/selfhost.ps1
       - name: Self-host
         if: runner.os != 'Windows'
         env:
           CXX: ${{ matrix.cxx }}
           CPM_HOME: ${{ runner.temp }}/cpm-home
+          CPM_TEST_NETWORK: 1
         run: sh scripts/selfhost.sh
 
       - name: Upload CPM logs

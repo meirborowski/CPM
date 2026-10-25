@@ -39,7 +39,7 @@ struct DependencySpec {
 };
 
 struct PlatformOverrides {
-    std::vector<std::string> defines, public_defines, system_libs, sources, cxxflags, ldflags;
+    std::vector<std::string> defines, public_defines, system_libs, sources, cflags, cxxflags, ldflags;
 };
 
 // A loaded cpm.jsonc (docs/spec/manifest.md §3).
@@ -53,7 +53,11 @@ struct Manifest {
     std::string description, license, repository, homepage;
     std::vector<std::string> authors, keywords;
     bool is_private = false;
+    // The minimum C++ standard the package needs: "std", else c++20, else c++11 for a C library that sets "cstd"
+    // and not "std" (manifest.md §3.2). A project compiles with project_std() instead.
     std::string std = "c++20";
+    bool std_declared = false;   // "std" is in the manifest
+    std::string cstd = "gnu17";  // the package's own C standard (manifest.md §3.3)
     std::optional<TargetKind> type;
     std::vector<std::string> toolchain;  // compiler requests, in order of preference (build.md §1.1)
     std::optional<std::string> main;
@@ -70,7 +74,7 @@ struct Manifest {
 };
 
 inline const std::vector<std::string>& default_sources() {
-    static const std::vector<std::string> globs = {"src/**/*.cpp", "src/**/*.cc", "src/**/*.cxx"};
+    static const std::vector<std::string> globs = {"src/**/*.cpp", "src/**/*.cc", "src/**/*.cxx", "src/**/*.c"};
     return globs;
 }
 
@@ -78,6 +82,16 @@ inline const std::vector<std::string>& known_standards() {
     static const std::vector<std::string> stds = {"c++11", "c++14", "c++17", "c++20", "c++23", "c++26"};
     return stds;
 }
+
+inline const std::vector<std::string>& known_c_standards() {
+    static const std::vector<std::string> stds = {"c89",   "c99",   "c11",   "c17",   "c23",
+                                                  "gnu89", "gnu99", "gnu11", "gnu17", "gnu23"};
+    return stds;
+}
+
+// The C++ standard a project compiles all C++ code with (manifest.md §3.2): its "std", or c++20 when it has none,
+// even if a "cstd" makes its requirement as a dependency c++11.
+inline std::string project_std(const Manifest& m) { return m.std_declared ? m.std : "c++20"; }
 
 bool valid_package_name(std::string_view name);
 

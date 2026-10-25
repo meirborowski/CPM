@@ -73,7 +73,7 @@ std::string dry_run(const NinjaRun& run) {
 
 void update_compile_commands(const NinjaRun& run) {
     std::vector<std::string> args = base_args(run);
-    args.insert(args.end(), {"-t", "compdb", "cxx"});
+    args.insert(args.end(), {"-t", "compdb", "cxx", "cc"});
     proc::Command cmd{.argv = args, .cwd = run.root};
     proc::Captured r = proc::capture(cmd);
     if (r.exit_code != 0) {

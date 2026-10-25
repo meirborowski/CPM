@@ -111,7 +111,7 @@ TEST(generates_deterministic_build_ninja) {
     auto layout = build::infer_layout(m, {});
     auto tc = fake_linux_gcc();
     auto driver = toolchain::make_driver(tc);
-    auto plan = build::make_plan(m, m.profiles.at("release"), tc, "-std=c++23", *driver, layout);
+    auto plan = build::make_plan(m, m.profiles.at("release"), tc, {.cxx = "-std=c++23"}, *driver, layout);
     CHECK_EQ(plan.main_output, "build/release/hello");
     CHECK_EQ(plan.tests.size(), 1u);
 
@@ -172,7 +172,7 @@ default all
 )", cpm::version);
     std::string generated = build::generate_ninja(plan, *driver);
     CHECK_EQ(generated, expected);
-    CHECK_EQ(build::generate_ninja(build::make_plan(m, m.profiles.at("release"), tc, "-std=c++23", *driver, layout),
+    CHECK_EQ(build::generate_ninja(build::make_plan(m, m.profiles.at("release"), tc, {.cxx = "-std=c++23"}, *driver, layout),
                                    *driver),
              generated);
 }
@@ -185,13 +185,13 @@ TEST(static_and_shared_library_plans) {
     auto driver = toolchain::make_driver(tc);
 
     auto m = make_manifest(dir.path());
-    auto plan = build::make_plan(m, m.profiles.at("debug"), tc, "-std=c++20", *driver, build::infer_layout(m, {}));
+    auto plan = build::make_plan(m, m.profiles.at("debug"), tc, {.cxx = "-std=c++20"}, *driver, build::infer_layout(m, {}));
     CHECK(plan.archive.has_value());
     CHECK_EQ(plan.main_output, "build/debug/libhello.a");
     CHECK_EQ(plan.tests[0].inputs.back(), "build/debug/libhello.a");
 
     auto shared = make_manifest(dir.path(), R"(, "type": "shared-lib")");
-    auto splan = build::make_plan(shared, shared.profiles.at("debug"), tc, "-std=c++20", *driver,
+    auto splan = build::make_plan(shared, shared.profiles.at("debug"), tc, {.cxx = "-std=c++20"}, *driver,
                                   build::infer_layout(shared, {}));
     CHECK_EQ(splan.main_output, "build/debug/libhello.so");
     CHECK(std::find(splan.cxxflags.begin(), splan.cxxflags.end(), "-fPIC") != splan.cxxflags.end());
@@ -206,7 +206,7 @@ TEST(static_and_shared_library_plans) {
     auto mac = tc;
     mac.os = Os::MacOS;
     auto mdriver = toolchain::make_driver(mac);
-    auto mplan = build::make_plan(shared, shared.profiles.at("debug"), mac, "-std=c++20", *mdriver,
+    auto mplan = build::make_plan(shared, shared.profiles.at("debug"), mac, {.cxx = "-std=c++20"}, *mdriver,
                                   build::infer_layout(shared, {}));
     CHECK_EQ(mplan.main_output, "build/debug/libhello.dylib");
     CHECK_EQ(mplan.main->extra_ldflags,
@@ -217,7 +217,7 @@ TEST(static_and_shared_library_plans) {
 
     tc.os = Os::Windows;  // MinGW: DLL plus import library
     auto wdriver = toolchain::make_driver(tc);
-    auto wplan = build::make_plan(shared, shared.profiles.at("debug"), tc, "-std=c++20", *wdriver,
+    auto wplan = build::make_plan(shared, shared.profiles.at("debug"), tc, {.cxx = "-std=c++20"}, *wdriver,
                                   build::infer_layout(shared, {}));
     CHECK_EQ(wplan.main_output, "build/debug/libhello.dll");
     CHECK_EQ(wplan.main->extra_ldflags,
@@ -238,7 +238,7 @@ TEST(profile_flag_mapping) {
     p.warnings = "none";
     p.werror = true;
     p.runtime = "static";
-    auto f = driver->profile_flags(p, "-std=c++20", false);
+    auto f = driver->profile_flags(p, toolchain::Language::Cxx, "-std=c++20", false);
     CHECK_EQ(f.compile, (std::vector<std::string>{"-std=c++20", "-Oz", "-g", "-flto=auto", "-fsanitize=address",
                                                   "-fno-omit-frame-pointer", "-w", "-Werror",
                                                   "-fdiagnostics-color=always"}));
@@ -246,7 +246,7 @@ TEST(profile_flag_mapping) {
     CHECK_EQ(f.notes.size(), 1u);  // thread + address
 
     tc.os = Os::Windows;
-    auto mingw = toolchain::make_driver(tc)->profile_flags(p, "-std=c++20", false);
+    auto mingw = toolchain::make_driver(tc)->profile_flags(p, toolchain::Language::Cxx, "-std=c++20", false);
     CHECK(std::find(mingw.link.begin(), mingw.link.end(), "-static") != mingw.link.end());
     CHECK_EQ(mingw.notes.size(), 2u);  // no sanitizers on MinGW
 }

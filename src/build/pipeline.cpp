@@ -15,6 +15,7 @@
 #include "json/parse.hpp"
 #include "json/write.hpp"
 #include "manifest/manifest.hpp"
+#include "toolchain/c_compiler.hpp"
 #include "toolchain/probe.hpp"
 
 namespace cpm::build {
@@ -66,14 +67,14 @@ std::string format_seconds(double s) { return s < 10 ? std::format("{:.2f}s", s)
 
 void derive_from_manifest(Project& p, const std::string& profile_name) {
     p.profile = pick_profile(p.manifest, profile_name);
-    p.std_flag = toolchain::std_flag(p.toolchain, p.manifest.std, p.home);
+    p.std_flag = toolchain::std_flag(p.toolchain, manifest::project_std(p.manifest), p.home);
     manifest::PlatformOverrides platform = manifest::effective_platform(p.manifest, p.toolchain.os);
     std::vector<std::string> defines = p.profile.defines;
     for (const auto* list : {&p.manifest.defines, &p.manifest.public_defines, &platform.defines, &platform.public_defines})
         defines.insert(defines.end(), list->begin(), list->end());
     std::vector<std::string> cxxflags = p.profile.cxxflags;
     cxxflags.insert(cxxflags.end(), platform.cxxflags.begin(), platform.cxxflags.end());
-    p.abi = toolchain::fingerprint(p.toolchain, *p.driver, p.profile, p.manifest.std, defines, cxxflags);
+    p.abi = toolchain::fingerprint(p.toolchain, *p.driver, p.profile, manifest::project_std(p.manifest), defines, cxxflags);
 }
 
 }  // namespace
@@ -128,8 +129,13 @@ BuildResult run_build(const BuildRequest& req, const manifest::UserConfig& confi
     lap("dependencies ready");
 
     Layout layout = infer_layout(m, manifest::effective_platform(m, tc.os));
+    // The C compiler is found only when something is C (build.md §1.2).
+    StandardFlags standards{.cxx = project.std_flag};
+    for (const auto& cstd : c_standards(m, layout, dependencies))
+        standards.c[cstd] = toolchain::cstd_flag(project.toolchain, cstd, home);
+    if (!standards.c.empty()) log::verbose(std::format("compiling C with {}", paths::to_utf8(tc.c->path)));
     BuildResult result;
-    result.plan = make_plan(m, project.profile, tc, project.std_flag, driver, layout, dependencies);
+    result.plan = make_plan(m, project.profile, tc, standards, driver, layout, dependencies);
     BuildPlan& plan = result.plan;
     if (req.require_executable && plan.kind != manifest::TargetKind::Executable) {
         throw Error(std::format("{} is a {}, so there is no executable to run", plan.package,

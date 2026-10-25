@@ -15,6 +15,12 @@ enum class Family { Gcc, Clang, AppleClang, Msvc, ClangCl };
 
 std::string_view to_string(Family family);
 
+// The C compiler that goes with a C++ compiler (docs/spec/build.md §1.2).
+struct CCompiler {
+    fs::path path;
+    std::map<std::string, std::string> cstd_flags{};  // "c23" -> "-std=c2x", filled on demand
+};
+
 // A probed C++ toolchain (docs/spec/build.md §1, docs/spec/abi.md §4).
 struct Toolchain {
     Family family = Family::Gcc;
@@ -30,6 +36,7 @@ struct Toolchain {
     std::string eh;          // seh | dwarf | sjlj | itanium
     std::string threads;     // posix | win32 | mcf | single
     std::map<std::string, std::string> std_flags;  // "c++23" -> "-std=c++23", filled on demand
+    std::optional<CCompiler> c;                    // found when a build first compiles C (find_c_compiler)
     std::string chosen_by;                         // what chose it (build.md §1.1): "from cpm.jsonc", "found on PATH", ...
 
     bool is_mingw() const { return os == Os::Windows && (family == Family::Gcc || family == Family::Clang); }

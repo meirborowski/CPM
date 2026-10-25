@@ -4,7 +4,7 @@
 
 1. **Locate** the project root (walk up from the working directory to the nearest `cpm.jsonc`) and load the manifest.
 2. **Resolve the profile** (default `debug`): built-ins ← manifest ← CLI flags ([manifest.md §6](manifest.md#6-profiles)).
-3. **Select and probe the toolchain** (§1). The probe is cached, so a warm run spawns no processes.
+3. **Select and probe the toolchain** (§1), and its C compiler when anything in the build has `.c` sources (§1.2). Probes are cached, so a warm run spawns no processes.
 4. **Compute the ABI fingerprint** ([abi.md](abi.md)).
 5. **Ensure dependencies:** if the lockfile is stale, or `.cpm-modules.json` does not match the lock hash and ABI, run the install pipeline (offline when everything is cached). It builds any missing `lib/<abi16>` (§5) and repoints the `lib` links ([store.md §5](store.md#5-cpm_modules)).
 6. **Plan:** infer targets from the layout, expand the source globs, and compute include directories, definitions and link order (§4).
@@ -40,7 +40,11 @@ The resolved absolute path identifies the toolchain from then on.
 
 - The family comes from the probe macros: `__clang__` with `__apple_build_version__` ⇒ `apple-clang`, `__clang__` ⇒ `clang`, `__GNUC__` ⇒ `gcc`, `_MSC_VER` with no `__clang__` ⇒ `msvc`, `clang-cl` ⇒ `clang-cl`.
 - **Archiver:** for GCC, `gcc-ar` from the compiler's directory with the same prefix and suffix as the compiler (`x86_64-w64-mingw32-g++-13` → `x86_64-w64-mingw32-gcc-ar-13`), falling back to `ar`. For Clang, `llvm-ar` (same directory, then `PATH`), falling back to `ar`. For MSVC, `lib.exe`. Using `gcc-ar`/`llvm-ar` keeps LTO archives working.
-- The linker is the compiler driver itself (`link.exe` for MSVC).
+- **C compiler:** the C++ compiler's companion in the same directory. Its file name is the C++ compiler's with `clang++` replaced by `clang`, `g++` by `gcc`, or `c++` by `cc`, keeping any prefix and suffix: `x86_64-w64-mingw32-g++-13` → `x86_64-w64-mingw32-gcc-13`, `clang++-18` → `clang-18`, `c++` → `cc`. For MSVC it is `cl.exe` itself.
+  - CPM looks for it only when the build compiles C: the root, a path dependency, or a package being built in the sandbox (§5) has `.c` sources.
+  - It MUST report the same family, version and target as the C++ compiler, so that C and C++ objects come from one toolchain. When it is missing, or reports something else, the build fails with an error that names both compilers and what each one reported.
+  - `CC` is not read. The C++ compiler choice (§1.1) picks the toolchain, and the C compiler comes with it.
+- **Linker:** the C++ compiler driver (`link.exe` for MSVC), also for targets whose own code is all C. It links the C++ runtime that mixed targets and C++ dependencies need, so CPM doesn't have to track which packages contain C++. On platforms where the linker keeps shared libraries that nothing uses, a pure C program then lists the C++ runtime among its dependencies.
 
 ### 1.3 Probe cache
 
@@ -57,13 +61,20 @@ The resolved absolute path identifies the toolchain from then on.
       "target": "x86_64-w64-mingw32",
       "ar": "C:/Strawberry/c/bin/gcc-ar.exe",
       "stdFlags": { "c++20": "-std=c++20", "c++23": "-std=c++23" },
-      "inputs": { "arch": "x86_64", "compiler": "gcc", "crt": "ucrt", "eh": "seh", "os": "windows", "stdlib": "libstdc++", "stdlib.abi": "cxx11", "threads": "posix" }
+      "inputs": { "arch": "x86_64", "compiler": "gcc", "crt": "ucrt", "eh": "seh", "os": "windows", "stdlib": "libstdc++", "stdlib.abi": "cxx11", "threads": "posix" },
+      "c": {
+        "path": "C:/Strawberry/c/bin/gcc.exe",
+        "stamp": { "size": 2479104, "mtime": 1705312000 },
+        "cstdFlags": { "gnu17": "-std=gnu17", "c23": "-std=c2x" }
+      }
     }
   }
 }
 ```
 
 An entry is reused while the compiler file's size and mtime are unchanged. `stdFlags` records the accepted spelling of each standard the first time it is requested. The final name (`-std=c++23`) is tried first, then the provisional one (`-std=c++2b`, `-std=c++2c`).
+
+`c` is added the first time a build needs the C compiler (§1.2), and probed again when the C compiler's own size or mtime change. `cstdFlags` works like `stdFlags`: `-std=c23` is tried before `-std=c2x`, and `-std=gnu23` before `-std=gnu2x`. The other standards have one spelling.
 
 ### 1.4 Finding compilers
 
@@ -98,7 +109,8 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 
 | Setting | GCC / Clang | MSVC (*post-MVP*) |
 |---|---|---|
-| `std` | `-std=c++11` … `-std=c++26` (spelling from the probe cache) | `/std:c++14` (also used for `c++11`, the oldest MSVC mode), `/std:c++17`, `/std:c++20`, `/std:c++latest` (or `/std:c++23preview` if supported) |
+| `std` (C++ only) | `-std=c++11` … `-std=c++26` (spelling from the probe cache) | `/std:c++14` (also used for `c++11`, the oldest MSVC mode), `/std:c++17`, `/std:c++20`, `/std:c++latest` (or `/std:c++23preview` if supported) |
+| `cstd` (C only, the package's own) | `-std=c89` … `-std=gnu23` (spelling from the probe cache) | `/std:c11`, `/std:c17`, `/std:clatest` for `c23`. `c89` and `c99` use MSVC's default C mode, and each GNU dialect maps to its ISO standard |
 | `opt` `0` / `1` / `2` / `3` / `s` / `z` | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | `/Od` / `/O2` / `/O2` / `/O2` / `/O1` / `/O1` |
 | `debug: true` | `-g` | compile `/Z7`, link `/DEBUG` |
 | `assertions: false` | `-DNDEBUG` | `/DNDEBUG` |
@@ -108,11 +120,13 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | `debugRuntime: true` | — | `/MDd` or `/MTd` |
 | `warnings: none` | `-w` | `/W0` |
 | `warnings: default` | `-Wall -Wextra` | `/W4` |
-| `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion -Wnon-virtual-dtor -Woverloaded-virtual` | `/W4 /permissive-` plus the driver's strict lint set |
+| `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, plus `-Wnon-virtual-dtor -Woverloaded-virtual` for C++ | `/W4 /permissive-` plus the driver's strict lint set |
 | `werror: true` | `-Werror` | `/WX` |
 | PIC (dependency builds, shared libraries; not on Windows) | `-fPIC` | — |
 | always | `-fdiagnostics-color=always` (see the note below) | `/nologo /EHsc /utf-8 /Zc:__cplusplus` |
-| `cxxflags` / `ldflags` | appended last, verbatim | appended last, verbatim |
+| `cflags` / `cxxflags` / `ldflags` | appended last, verbatim: `cflags` to C compiles, `cxxflags` to C++ compiles | appended last, verbatim |
+
+The rest of a profile applies to C as it does to C++: `opt`, `debug`, `assertions`, `lto`, `sanitizers`, `warnings`, `werror`, `defines`, PIC and the colour flag. C and C++ translation units also get the same include directories and definitions (§4.3).
 
 The colour flag is always passed, so that changing the colour setting never changes command lines and never triggers a rebuild. Ninja strips colour codes itself when its output is not a terminal. CPM makes Ninja follow its own colour decision ([cli.md §1](cli.md#1-global-options)) by setting `CLICOLOR_FORCE=1` when colour is on and `TERM=dumb` when it is off.
 
@@ -161,7 +175,7 @@ Each profile has its own `build.ninja` and output directory, so switching profil
 
 Path packages are compiled inside the consumer's graph rather than in a sandbox, so edits to them rebuild incrementally.
 
-- Their translation units use **their own** include directories (their `src/`, their `include`, and their dependencies' includes), their own private `defines`, and the root profile's flags. These are per-edge variable overrides in Ninja.
+- Their translation units use **their own** include directories (their `src/`, their `include`, and their dependencies' includes), their own private `defines`, their own `cstd` for C, and the root profile's flags. These are per-edge variable overrides in Ninja.
 - They are archived into `lib/deps/lib<name>.a` and linked like store libraries.
 - `cpm_modules/<name>/include` links to the package's include directory, so consumer code sees a uniform layout.
 
@@ -218,6 +232,23 @@ build tests: phony greeting.test
 default all
 ```
 
+**C sources.** When the build compiles C, the file also defines `cc` and `cflags`, and a `cc` rule that the C translation units use. The example's project with a `src/parse.c` added would get:
+
+```ninja
+cc = C$:/Strawberry/c/bin/gcc.exe
+cflags = -std=gnu17 -O0 -g -Wall -Wextra -fdiagnostics-color=always
+
+rule cc
+  command = $cc -MD -MF $out.d $cflags $defines $incs -c $in -o $out
+  depfile = $out.d
+  deps = gcc
+  description = CC $in
+
+build cpm_modules/.cache/debug/obj/src/parse.c.o: cc src/parse.c
+```
+
+A path dependency's C translation units override `cflags` per edge, with their own `cstd`. Links still use `$cxx` (§1.2). A build with no C sources has none of these lines.
+
 Rules:
 
 - **Determinism:** edges are emitted in a fixed order: compile edges sorted by source path, then archive, link and phony edges in target order. The same inputs give a byte-identical file.
@@ -231,7 +262,7 @@ Rules:
 
 ### 4.6 `compile_commands.json`
 
-After generating `build.ninja`, CPM runs `ninja -f <file> -t compdb cxx` and writes the result to `<project>/compile_commands.json`, only if its content changed. Without this file, clangd and IDEs could not find dependency headers.
+After generating `build.ninja`, CPM runs `ninja -f <file> -t compdb cxx cc` and writes the result to `<project>/compile_commands.json`, only if its content changed. Without this file, clangd and IDEs could not find dependency headers.
 
 ### 4.7 Shared libraries at run time (*post-MVP for shared-library dependencies*)
 
@@ -248,8 +279,8 @@ When the store has no `lib/<abi16>/` for a registry or git package and the regis
    - sources are absolute paths into the store entry, which is read-only
    - include directories: its `src/`, its include directory, and the include directories of its resolved dependencies **in the store** (never the consumer's `cpm_modules/`)
    - definitions: its `defines` and `publicDefines`, its dependencies' `publicDefines`, and its platform overrides
-4. **Flags:** a synthetic profile `{ opt: 2, debug: false, assertions: false, lto: false, warnings: "none" }` combined with every setting that the ABI fingerprint encodes: root `std`, `runtime`, `debugRuntime`, `sanitizers`, `defines.abi`, the exceptions and RTTI flags, and PIC. Artifacts therefore always match their ABI directory.
-5. Write `build.ninja` into the sandbox and run Ninja with output captured to `$CPM_HOME/logs/build-<name>@<version>-<abi16>.log`. `CPATH`, `CPLUS_INCLUDE_PATH` and `LIBRARY_PATH` are cleared for the build, as are `INCLUDE` and `LIB` for non-MSVC toolchains, so headers and libraries from the environment cannot leak in.
+4. **Flags:** a synthetic profile `{ opt: 2, debug: false, assertions: false, lto: false, warnings: "none" }` combined with every setting that the ABI fingerprint encodes: root `std`, `runtime`, `debugRuntime`, `sanitizers`, `defines.abi`, the exceptions and RTTI flags, and PIC. Artifacts therefore always match their ABI directory. The package's C sources are compiled with its own `cstd` ([manifest.md §3.3](manifest.md#33-cstd-semantics)) and the same synthetic profile.
+5. Write `build.ninja` into the sandbox and run Ninja with output captured to `$CPM_HOME/logs/build-<name>@<version>-<abi16>.log`. `CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH` and `LIBRARY_PATH` are cleared for the build, as are `INCLUDE` and `LIB` for non-MSVC toolchains, so headers and libraries from the environment cannot leak in.
 6. Copy the artifacts into a staging `lib/<abi16>.tmp-<random>/`, write `meta.json` and `.complete`, then rename to `lib/<abi16>/`.
 7. Remove the sandbox, unless the build failed and `CPM_KEEP_SANDBOX=1` is set.
 
@@ -265,7 +296,7 @@ Dependencies are built in dependency order, and a failure stops the install. Hea
 
 ## 7. Tests
 
-- **Discovery:** `tests/*.test.{cpp,cc,cxx}`, one executable per file ([manifest.md §4](manifest.md#4-target-inference)).
+- **Discovery:** `tests/*.test.{cpp,cc,cxx,c}`, one executable per file ([manifest.md §4](manifest.md#4-target-inference)).
 - **Build:** `cpm test [filter…]` builds the matching `<stem>` targets, or `tests` when no filter is given.
 - **Run:** tests run one at a time, sorted by name. For each test:
   - working directory: the project root

@@ -21,6 +21,8 @@
 #include "json/parse.hpp"
 #include "json/write.hpp"
 #include "toolchain/abi.hpp"
+#include "toolchain/c_compiler.hpp"
+#include "toolchain/language.hpp"
 #include "version.hpp"
 
 namespace cpm::install {
@@ -41,6 +43,7 @@ manifest::Profile dependency_profile(const manifest::Profile& root, const std::v
     for (const auto& d : root.defines) {
         if (toolchain::is_abi_define(d)) p.defines.push_back(d);
     }
+    p.cflags.clear();
     p.cxxflags.clear();
     for (const auto& f : root_cxxflags) {
         if (f == "-fno-exceptions" || f == "-fno-rtti") p.cxxflags.push_back(f);
@@ -79,7 +82,7 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
     if (library_intact(out_dir)) return out_dir;
     discard_damaged(out_dir, what);
 
-    const toolchain::Toolchain& tc = project.toolchain;
+    toolchain::Toolchain tc = project.toolchain;  // a copy, since compiling C finds the C compiler (build.md §1.2)
     const toolchain::Driver& driver = *project.driver;
     manifest::PlatformOverrides platform = manifest::effective_platform(m, tc.os);
     build::Layout layout = build::infer_layout(m, platform);
@@ -94,7 +97,14 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
     std::vector<std::string> root_cxxflags = project.profile.cxxflags;
     root_cxxflags.insert(root_cxxflags.end(), root_platform.cxxflags.begin(), root_platform.cxxflags.end());
     manifest::Profile profile = dependency_profile(project.profile, root_cxxflags);
-    toolchain::ProfileFlags flags = driver.profile_flags(profile, project.std_flag, tc.os != Os::Windows);
+    const bool pic = tc.os != Os::Windows;
+    toolchain::ProfileFlags flags = driver.profile_flags(profile, toolchain::Language::Cxx, project.std_flag, pic);
+    // The package's C is compiled with its own standard (build.md §5 step 4).
+    const bool any_c = std::any_of(layout.sources.begin(), layout.sources.end(), [](const std::string& s) {
+        return toolchain::language_of(s) == toolchain::Language::C;
+    });
+    std::vector<std::string> cflags;
+    if (any_c) cflags = driver.profile_flags(profile, toolchain::Language::C, toolchain::cstd_flag(tc, m.cstd, project.home), pic).compile;
 
     std::vector<std::string> incs = {driver.include_flag(abs_utf8(entry / "src"))};
     if (layout.include_dir_exists) incs.push_back(driver.include_flag(abs_utf8(entry / paths::from_utf8(m.include_dir))));
@@ -119,18 +129,21 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
                           package.key(), abi));
     w.variable("ninja_required_version", "1.10");
     w.variable("cxx", build::ninja::args_value({paths::to_utf8(tc.cxx)}));
+    if (any_c) w.variable("cc", build::ninja::args_value({paths::to_utf8(tc.c->path)}));
     w.variable("ar", build::ninja::args_value({paths::to_utf8(tc.ar)}));
     w.variable("cxxflags", build::ninja::args_value(cxxflags));
+    if (any_c) w.variable("cflags", build::ninja::args_value(cflags));
     w.variable("defines", build::ninja::args_value(defines));
     w.variable("incs", build::ninja::args_value(incs));
     w.newline();
     for (const auto& rule : driver.rules()) {
-        if (rule.name == "cxx" || rule.name == "ar") w.rule(rule);
+        if (rule.name == "cxx" || rule.name == "ar" || (rule.name == "cc" && any_c)) w.rule(rule);
     }
     std::vector<std::string> objects;
     for (const auto& src : layout.sources) {
         std::string obj = build::object_path("obj", src, driver.object_ext());
-        w.build({obj}, "cxx", {abs_utf8(entry / paths::from_utf8(src))});
+        const char* rule = toolchain::language_of(src) == toolchain::Language::C ? "cc" : "cxx";
+        w.build({obj}, rule, {abs_utf8(entry / paths::from_utf8(src))});
         objects.push_back(obj);
     }
     w.build({archive_name}, "ar", objects);
@@ -140,7 +153,7 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
     proc::Captured r = proc::capture({.argv = {paths::to_utf8(ninja), "-f", "build.ninja"},
                                       .cwd = sandbox,
                                       .env_set = {{"NINJA_STATUS", "[%f/%t] "}, {"TERM", "dumb"}},
-                                      .env_unset = {"CPATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH"}},
+                                      .env_unset = {"CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH"}},
                                      std::nullopt, true);
     fs::path log_file = project.home / "logs" / std::format("build-{}-{}.log", package.key(), abi);
     fsx::write_file_atomic(log_file, r.out + r.err);

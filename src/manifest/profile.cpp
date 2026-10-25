@@ -39,16 +39,16 @@ std::map<std::string, Profile> builtin_profiles() {
 
 namespace {
 
-constexpr std::array<std::string_view, 13> kProfileKeys = {
+constexpr std::array<std::string_view, 14> kProfileKeys = {
     "inherits", "opt", "debug", "assertions", "lto", "sanitizers", "runtime",
-    "debugRuntime", "warnings", "werror", "defines", "cxxflags", "ldflags"};
+    "debugRuntime", "warnings", "werror", "defines", "cflags", "cxxflags", "ldflags"};
 
 constexpr std::array<std::string_view, 5> kSanitizers = {"address", "undefined", "thread", "memory", "leak"};
 
 struct Patch {
     std::optional<std::string> inherits, opt, runtime, warnings;
     std::optional<bool> debug, assertions, lto, werror, debug_runtime;
-    std::optional<std::vector<std::string>> sanitizers, defines, cxxflags, ldflags;
+    std::optional<std::vector<std::string>> sanitizers, defines, cflags, cxxflags, ldflags;
     json::Span span;
 };
 
@@ -106,6 +106,7 @@ Patch read_patch(const std::string& name, const json::Value& v, Checker& c) {
         }
         p.defines = d;
     }
+    p.cflags = c.strings(v, "cflags");
     p.cxxflags = c.strings(v, "cxxflags");
     p.ldflags = c.strings(v, "ldflags");
     return p;
@@ -129,6 +130,7 @@ Profile apply(Profile base, const Patch& p, const std::string& name) {
     if (p.debug_runtime) base.debug_runtime = *p.debug_runtime;
     if (p.sanitizers) append_unique(base.sanitizers, *p.sanitizers);
     if (p.defines) append_unique(base.defines, *p.defines);
+    if (p.cflags) append_unique(base.cflags, *p.cflags);
     if (p.cxxflags) append_unique(base.cxxflags, *p.cxxflags);
     if (p.ldflags) append_unique(base.ldflags, *p.ldflags);
     return base;

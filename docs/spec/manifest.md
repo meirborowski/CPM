@@ -77,11 +77,12 @@ The same manifest, together with its lockfile and registry index, is in [example
 | `repository`, `homepage` | string | — | URLs. |
 | `keywords` | string[] | `[]` | Search keywords for registries. |
 | `private` | bool | `false` | `true` makes `cpm publish` refuse the package. |
-| `std` | string | `"c++20"` | C++ standard: `c++11`, `c++14`, `c++17`, `c++20`, `c++23`, `c++26`. For the root package it is the standard **everything** is compiled with. For a dependency it is the **minimum** standard that package needs (§3.2). |
+| `std` | string | `"c++20"` | C++ standard: `c++11`, `c++14`, `c++17`, `c++20`, `c++23`, `c++26`. For the root package it is the standard **all C++ code** is compiled with. For a dependency it is the **minimum** standard that package needs, and a dependency that sets `cstd` but not `std` needs none (§3.2). |
+| `cstd` | string | `"gnu17"` | C standard for the package's `.c` files: `c89`, `c99`, `c11`, `c17`, `c23`, or the GNU dialects `gnu89`, `gnu99`, `gnu11`, `gnu17`, `gnu23`. Every package's C code is compiled with its own `cstd` (§3.3). |
 | `type` | string | inferred | `executable`, `static-lib`, `shared-lib`, `header-only` (§4). |
 | `toolchain` | string or string[] | — | The compiler the project asks for when neither the command line nor `CXX` choose one: a request such as `"gcc >=14"`, or several in order of preference, `["gcc >=14", "clang >=18"]` ([build.md §1.1](build.md#11-selection-order)). Only the root package's is used. |
 | `main` | string | inferred | Entrypoint source, relative to the package root (§4). |
-| `sources` | string[] | `["src/**/*.cpp", "src/**/*.cc", "src/**/*.cxx"]` | Glob patterns of translation units (§5). |
+| `sources` | string[] | `["src/**/*.cpp", "src/**/*.cc", "src/**/*.cxx", "src/**/*.c"]` | Glob patterns of translation units (§5). `.c` files are C, the others C++. |
 | `include` | string | `"include"` | Public header directory, exported to dependents. It need not exist for executables. |
 | `defines` | string[] | `[]` | Private preprocessor definitions, `NAME` or `NAME=VALUE`. |
 | `publicDefines` | string[] | `[]` | Definitions applied to this package **and** everything that depends on it. |
@@ -103,17 +104,25 @@ The same manifest, together with its lockfile and registry index, is in [example
 
 ### 3.2 `std` semantics
 
-- The root package's `std` is passed to the compiler for the root and for **every dependency built for it**. It is also part of the ABI fingerprint ([abi.md](abi.md)).
+- The root package's `std` is passed to the compiler for the C++ code of the root and of **every dependency built for it**. It is also part of the ABI fingerprint ([abi.md](abi.md)).
 - A dependency whose `std` is newer than the root's is an error, for example `fmt requires c++23 but the project uses c++20`.
 - A dependency whose `std` is older is compiled with the root's newer standard.
+- A dependency that sets `cstd` and not `std` is a C library, which needs no particular C++ standard. Its `std` is `c++11`, the oldest, so it never restricts the project. That is the `std` that `cpm publish` declares and the lockfile records. A package whose C++ code needs a newer standard sets `std` as well. The root's `std` always defaults to `c++20`, since it is what its C++ dependencies are compiled with.
+
+### 3.3 `cstd` semantics
+
+- A package's `.c` files are compiled with **its own** `cstd`, whether it is the root, a path dependency or a package from the store. The root's `cstd` doesn't apply to dependencies.
+- That differs from `std` because C code often needs the standard it was written for: C23, for example, removed K&R-style function definitions and made `bool`, `true` and `false` keywords. C's ABI doesn't depend on the standard, so C code compiled with different standards links together, and `cstd` isn't part of the ABI fingerprint ([abi.md](abi.md)).
+- The GNU dialects add the compiler's extensions. With glibc they also declare POSIX functions such as `strdup` and `fileno` without feature-test macros, which much existing C code expects.
+- The default, `gnu17`, is what GCC 8 to 14 and recent Clang releases use when given no `-std`, so C code that builds with a plain `gcc -c` builds with CPM. It is fixed, so that builds don't change when a compiler changes its own default, as GCC 15 did to `gnu23`.
 
 ## 4. Target inference
 
 If `type` is absent, CPM infers it in this order. The first match wins:
 
 1. `main` is set → its file name decides: `main.*` ⇒ `executable`, `lib.*` ⇒ `static-lib`. Any other name requires an explicit `type`.
-2. `src/main.cpp` (or `.cc`/`.cxx`) exists ⇒ `executable`, `main` = that file.
-3. `src/lib.cpp` (or `.cc`/`.cxx`) exists ⇒ `static-lib`, `main` = that file.
+2. `src/main.cpp` (or `.cc`, `.cxx`, `.c`, tried in that order) exists ⇒ `executable`, `main` = that file.
+3. `src/lib.cpp` (or `.cc`, `.cxx`, `.c`, tried in that order) exists ⇒ `static-lib`, `main` = that file.
 4. No source matches the `sources` globs and the `include` directory exists ⇒ `header-only`.
 5. Otherwise: error `cannot infer target type`, with a hint to add `src/main.cpp`, `src/lib.cpp` or `"type"`.
 
@@ -130,7 +139,7 @@ If both `src/main.cpp` and `src/lib.cpp` exist and `type` is absent, CPM picks `
 
 Executables split their sources so that tests can exercise internal code: everything except the entrypoint compiles once and links into both the executable and every test.
 
-**Tests:** each `tests/*.test.cpp` (non-recursive; `.cc`/`.cxx` also accepted) becomes its own executable named after the file stem, for example `tests/json.test.cpp` → `json.test[.exe]`. Files in subdirectories of `tests/` are helpers and are never test entrypoints. Tests are built only by `cpm test` or `cpm build --tests` ([build.md §7](build.md#7-tests)).
+**Tests:** each `tests/*.test.cpp` (non-recursive; `.cc`, `.cxx` and `.c` also accepted) becomes its own executable named after the file stem, for example `tests/json.test.cpp` → `json.test[.exe]`. Files in subdirectories of `tests/` are helpers and are never test entrypoints. Tests are built only by `cpm test` or `cpm build --tests` ([build.md §7](build.md#7-tests)).
 
 ## 5. Sources and include directories
 
@@ -138,6 +147,7 @@ Executables split their sources so that tests can exercise internal code: everyt
 - Matching is case-sensitive on every OS. Results are sorted byte-wise so build plans are deterministic.
 - Directories named `cpm_modules` or `.git` are never searched, and links (symlinks, junctions) are never followed.
 - Entrypoint files (`main`, test files) are always removed from the core set even if a glob matches them.
+- **Languages:** a source whose name ends in `.c` is C, compiled with the C compiler ([build.md §1.2](build.md#12-family-and-companion-tools)) and the package's `cstd`. Every other source is C++. Matching is case-sensitive here too, so `.C` is C++, as GCC treats it. A package can mix both; C functions that C++ code calls need `extern "C"` declarations, as usual.
 - **Include path order for the package's own translation units:**
   1. `src/` (private headers, always)
   2. the package's `include` directory, if it exists
@@ -162,7 +172,7 @@ A profile is a named set of abstract build settings. Two profiles always exist:
 | `warnings` | `"none"`/`"default"`/`"strict"` | `"default"` | `"default"` | Warning level ([build.md §3](build.md#3-profile-to-flag-mapping)). |
 | `werror` | bool | `false` | `false` | Treat warnings as errors. |
 | `defines` | string[] | `[]` | `[]` | Extra definitions for this profile. |
-| `cxxflags`, `ldflags` | string[] | `[]` | `[]` | Raw compiler and linker flags. These are escape hatches and are not portable. |
+| `cflags`, `cxxflags`, `ldflags` | string[] | `[]` | `[]` | Raw flags for C compiles, C++ compiles and links. These are escape hatches and are not portable. |
 
 **Merging rules:**
 
@@ -175,14 +185,14 @@ A profile is a named set of abstract build settings. Two profiles always exist:
 ## 7. Platform overrides
 
 `platforms` keys: `windows`, `linux`, `macos`, and `unix` (= linux and macos). Each value may contain
-`defines`, `publicDefines`, `systemLibs`, `sources`, `cxxflags` and `ldflags`. These are **appended** to the base fields, in this order: base, `unix` (if it applies), the specific OS.
+`defines`, `publicDefines`, `systemLibs`, `sources`, `cflags`, `cxxflags` and `ldflags`. These are **appended** to the base fields, in this order: base, `unix` (if it applies), the specific OS.
 Platform-specific dependencies are reserved for a future version.
 
 ## 8. Manifest overlays
 
 An *overlay* is a partial manifest supplied from outside a package that has no `cpm.jsonc`, or whose `cpm.jsonc` is wrong. It can come from a registry index entry ([registry.md §3](registry.md#3-index-documents)) or from the object form of a git or path dependency ([dependencies.md §1.2](dependencies.md#12-object-form)).
 
-- Allowed overlay fields: `version`, `type`, `std`, `main`, `sources`, `include`, `defines`, `publicDefines`, `systemLibs`, `platforms`, `dependencies`, and `build` for the Legacy Bridge (*post-MVP*, [build.md §8](build.md#8-legacy-bridge-post-mvp)).
+- Allowed overlay fields: `version`, `type`, `std`, `cstd`, `main`, `sources`, `include`, `defines`, `publicDefines`, `systemLibs`, `platforms`, `dependencies`, and `build` for the Legacy Bridge (*post-MVP*, [build.md §8](build.md#8-legacy-bridge-post-mvp)).
 - `name` always comes from the dependency key. `version` comes from the registry entry, or the overlay, or the package's own manifest, or is derived from the git ref ([dependencies.md §1.3](dependencies.md#13-versions-of-git-and-path-packages)).
 - If the package also has a `cpm.jsonc`, overlay fields replace the corresponding top-level fields. They are not merged deeply.
 
@@ -190,7 +200,7 @@ An *overlay* is a partial manifest supplied from outside a package that has no `
 
 CPM validates the manifest after parsing and reports **all** problems it finds, not only the first, in the diagnostic format of [architecture.md §5](architecture.md#5-errors-and-diagnostics). Errors include:
 
-- missing or invalid `name` or `version`; an unknown `type`, `std` or profile value
+- missing or invalid `name` or `version`; an unknown `type`, `std`, `cstd` or profile value
 - a dependency that appears in both `dependencies` and `devDependencies`
 - a dependency on the package itself
 - a `toolchain` request that isn't a family (`gcc`, `clang`, `apple-clang`) optionally followed by a version range

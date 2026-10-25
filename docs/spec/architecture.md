@@ -109,7 +109,7 @@ struct Profile {
     std::optional<std::string> inherits;
     std::string opt = "0";                                 // "0" "1" "2" "3" "s" "z"
     bool debug = true, assertions = true, lto = false, werror = false, debug_runtime = false;
-    std::vector<std::string> sanitizers, defines, cxxflags, ldflags;
+    std::vector<std::string> sanitizers, defines, cflags, cxxflags, ldflags;
     std::string runtime = "dynamic";                       // dynamic | static
     std::string warnings = "default";                      // none | default | strict
 };
@@ -128,13 +128,14 @@ struct DependencySpec {
     json::Span span;                                       // where it was declared, for diagnostics
 };
 
-struct PlatformOverrides { std::vector<std::string> defines, public_defines, system_libs, sources, cxxflags, ldflags; };
+struct PlatformOverrides { std::vector<std::string> defines, public_defines, system_libs, sources, cflags, cxxflags, ldflags; };
 
 struct Manifest {
     fs::path file, root;                                   // .../cpm.jsonc and its directory
     std::string name;
     semver::Version version;
-    std::string std = "c++20";
+    std::string std = "c++20";                             // c++11 for a C library (manifest.md §3.2)
+    std::string cstd = "gnu17";                            // this package's own C standard (manifest.md §3.3)
     std::optional<TargetKind> type;                        // nullopt = infer (manifest.md §4)
     std::optional<fs::path> main;
     std::vector<std::string> sources;                      // globs; empty = defaults
@@ -173,7 +174,7 @@ struct Lockfile {
 // ---- toolchain ----------------------------------------------------------
 struct Toolchain {
     enum class Family { Gcc, Clang, AppleClang, Msvc, ClangCl } family;
-    fs::path cxx, ar;
+    fs::path cxx, cc, ar;                                  // cc: the C compiler, found when a build has C sources
     std::string version;                                   // "13.2.0"
     std::string target;                                    // "x86_64-w64-mingw32"
     Os os; std::string arch, stdlib, stdlib_abi, crt, eh, threads;
@@ -185,7 +186,7 @@ struct NinjaRule { std::string name, command, description, depfile, deps, rspfil
 class Driver {                                             // one per compiler family; see build.md §3
 public:
     virtual ~Driver() = default;
-    virtual std::vector<NinjaRule> rules() const = 0;      // cxx, ar, link, link_shared
+    virtual std::vector<NinjaRule> rules() const = 0;      // cxx, cc, ar, link, link_shared
     virtual std::vector<std::string> compile_flags(const Profile&, std::string_view std, bool pic) const = 0;
     virtual std::vector<std::string> link_flags(const Profile&, TargetKind) const = 0;
     virtual std::string define_flag(std::string_view) const = 0;

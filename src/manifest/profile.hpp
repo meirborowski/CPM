@@ -22,7 +22,8 @@ struct Profile {
     bool debug_runtime = false;
     std::vector<std::string> sanitizers;
     std::vector<std::string> defines;
-    std::vector<std::string> cxxflags;
+    std::vector<std::string> cflags;    // C compiles only
+    std::vector<std::string> cxxflags;  // C++ compiles only
     std::vector<std::string> ldflags;
     std::string runtime = "dynamic";  // dynamic | static
     std::string warnings = "default"; // none | default | strict

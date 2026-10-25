@@ -175,7 +175,7 @@ The server re-checks everything rather than trusting the client:
 - the name and version are valid (no build metadata), and the integrity matches the body
 - the archive is gzip and POSIX tar, holding only regular files and directories, all inside `<name>-<version>/`, with no absolute paths and no `..`
 - `<name>-<version>/cpm.jsonc` exists, its `name` and `version` match the URL, and its `dependencies` are registry ranges equal to the declared ones
-- the declared `std` equals the manifest's (default `c++20`), the declared `type` is a library type, and it equals the manifest's `type` when the manifest has one
+- the declared `std` equals the manifest's (default `c++20`, or `c++11` when the manifest sets `cstd` and not `std`, [manifest.md §3.2](manifest.md#32-std-semantics)), the declared `type` is a library type, and it equals the manifest's `type` when the manifest has one
 - the package is new, in which case the publisher becomes its first owner, or the publisher is an owner
 - the version is not published yet (409 `version_exists`). Published versions never change, and yanked ones are no exception.
 

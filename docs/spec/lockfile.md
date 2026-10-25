@@ -111,7 +111,7 @@ Empty `dependencies` and `devDependencies` are written as `{}`; neither key is e
 |---|---|---|---|
 | `resolution` | object | always | Where the package comes from (§2.4). |
 | `type` | string | always | Resolved target type: `static-lib`, `shared-lib` or `header-only`. Executables cannot be dependencies. |
-| `std` | string | always | The package's minimum C++ standard (after any overlay). |
+| `std` | string | always | The package's minimum C++ standard (after any overlay). `c++11` for a C library ([manifest.md §3.2](manifest.md#32-std-semantics)). |
 | `dependencies` | object | if non-empty | Name → exact resolved version of this package's dependencies. |
 | `dev` | bool | only when `true` | The package is reachable **only** through root `devDependencies`. |
 | `overridden` | object | if non-empty | Name → this package's own range for a dependency whose range an override replaced. With the importer's `overrides`, it says exactly which requirements were changed, and from what. |

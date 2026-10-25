@@ -10,7 +10,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 | 0.4.2 | Clearer conflicts | A new resolver that explains why versions can't fit together (released 2026-10-20) |
 | 0.4.3 | Version overrides | Force a version when you know a dependency works with it (released 2026-10-20) |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command (released 2026-10-21) |
-| 0.4.5 | C sources | Compile `.c` files, in projects and in C libraries from git |
+| 0.4.5 | C sources | Compile `.c` files, in projects and in C libraries from git (released 2026-10-25) |
 | 0.4.6 | CPM-native libraries | cpm-org's own JSON, logging, arguments and benchmark libraries on cpm-registry.com |
 | 0.4.7 | Prebuilt binaries | Installs download built libraries instead of compiling them |
 | 0.4.8 | MSVC, part 1 | Build and test with Visual Studio's compiler |

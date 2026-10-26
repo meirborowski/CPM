@@ -235,7 +235,7 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - choosing the compiler per machine, project or command, with `cpm toolchain list` showing every compiler CPM finds;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** CPM's own libraries for JSON, logging, arguments and benchmarks, prebuilt binaries from the registry, MSVC, symbol isolation and workspaces, in small releases from 0.4.6.
+**Next, on the [road to 0.5.0](ROADMAP.md):** MSVC, symbol isolation, workspaces and prebuilt binaries from the registry, in small releases from 0.4.8.
 
 ## Documentation
 

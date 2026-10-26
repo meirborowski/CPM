@@ -11,19 +11,20 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 | 0.4.3 | Version overrides | Force a version when you know a dependency works with it (released 2026-10-20) |
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command (released 2026-10-21) |
 | 0.4.5 | C sources | Compile `.c` files, in projects and in C libraries from git (released 2026-10-25) |
-| 0.4.6 | CPM-native libraries | cpm-org's own JSON, logging, arguments and benchmark libraries on cpm-registry.com |
-| 0.4.7 | Prebuilt binaries | Installs download built libraries instead of compiling them |
+| 0.4.6 | CPM-native libraries | cpm-org's own JSON, logging, arguments and benchmark libraries on cpm-registry.com (published 2026-10-26, no CPM release) |
 | 0.4.8 | MSVC, part 1 | Build and test with Visual Studio's compiler |
-| 0.4.9 | MSVC, part 2 | Shared libraries, dependencies and prebuilt binaries with MSVC |
+| 0.4.9 | MSVC, part 2 | Shared libraries and dependencies with MSVC |
 | 0.4.10 | Symbol isolation | Let a dependency keep its own copy of a library, without clashes |
 | 0.4.11 | Workspaces, part 1 | Several packages in one repository, one lockfile |
 | 0.4.12 | Workspaces, part 2 | Choosing members, scripts and publishing from a workspace |
+| 0.4.13 | Prebuilt binaries | Installs download built libraries instead of compiling them, MSVC included |
 | 0.5.0 | Ready | A user guide, stable formats, polish |
 
 The order follows dependencies:
 - The first three releases are about understanding and fixing your dependency graph, and they build on each other. `cpm why` shows who needs what, the new resolver explains conflicts, and overrides are built on that resolver.
 - Choosing the compiler comes before MSVC, which is then one more compiler to choose.
-- C sources come first, so C libraries can be built straight from git. The cpm-org libraries come before prebuilt binaries, which then have packages to build, and prebuilt binaries come before MSVC, so MSVC's binaries ride on them.
+- C sources come first, so C libraries can be built straight from git.
+- Prebuilt binaries come last. The cpm-org libraries build in seconds today, and the store already reuses each build across projects, so binaries pay off once the registry has libraries that take long to build. Coming after MSVC, they cover MSVC from the start. They were planned as 0.4.7, which has no release.
 - Symbol isolation comes after MSVC, because on MSVC it needs the shared-library support from MSVC part 2.
 - Workspaces stand alone and could move earlier.
 
@@ -105,17 +106,6 @@ More libraries follow after 0.4.6, in this order: hash maps, enum reflection, TO
 
 Done when cpm-json, cpm-log, cpm-args and cpm-bench are published on cpm-registry.com, each installs from an empty CPM home and passes its tests on Linux, macOS and Windows, and the README and the registry's website list them.
 
-## 0.4.7: Prebuilt binaries
-
-The store and the protocol already accept prebuilt binaries ([registry.md §4.2](docs/spec/registry.md#42-binary-archives)), but no registry serves any.
-
-- `cpm publish --with-binary` adds a binary built with the publisher's toolchain, tagged with its ABI fingerprint.
-- The registry service stores and serves binary archives next to source archives, within its storage limits.
-- A cpm-registry workflow builds binaries of the cpm-org libraries for the common toolchains: GCC on Linux, Apple Clang on macOS and MinGW GCC on Windows.
-- `cpm install` uses a matching binary, and builds from source otherwise, as it does today.
-
-Done when installing cpm-json and cpm-log on a common toolchain downloads binaries and builds nothing, and every other toolchain still builds from source.
-
 ## 0.4.8: MSVC, part 1
 
 Visual Studio's compiler, `cl.exe`, as one more toolchain.
@@ -132,7 +122,6 @@ Done when CPM's own tests pass when CPM is built with MSVC, and CI runs a Window
 - Shared libraries: symbol exports (`__declspec(dllexport)` through a generated export macro), import libraries, and DLLs found at run time.
 - Dependencies from the registry build with MSVC, and C sources compile with `cl.exe`.
 - `cpm setup` on Windows can install Visual Studio Build Tools (through winget, after asking), as an alternative to WinLibs GCC.
-- Prebuilt binaries for MSVC from the cpm-registry workflow.
 
 Done when the cpm-org libraries install and pass their tests with MSVC.
 
@@ -165,6 +154,17 @@ Done when a workspace with a library, a program using it and tests builds and te
 - `cpm install <package>` inside a member adds the dependency to that member.
 
 Done when the workspace from 0.4.11 publishes its library and installs it into an outside project.
+
+## 0.4.13: Prebuilt binaries
+
+The store and the protocol already accept prebuilt binaries ([registry.md §4.2](docs/spec/registry.md#42-binary-archives)), and `cpm install` already installs a matching one, but no registry serves any. Planned as 0.4.7, and moved here (2026-10-26) until the registry has libraries that are slow to build. A draft of its spec is on the branch `claude/prebuilt-binaries`.
+
+- `cpm publish --with-binary` adds a binary built with the publisher's toolchain, tagged with its ABI fingerprint.
+- The registry service stores and serves binary archives next to source archives, within its storage limits.
+- A cpm-registry workflow builds binaries of the cpm-org libraries for the common toolchains: GCC on Linux, Apple Clang on macOS, and MinGW GCC and MSVC on Windows.
+- `cpm install` uses a matching binary, and builds from source otherwise, as it does today.
+
+Done when installing cpm-json and cpm-log on a common toolchain downloads binaries and builds nothing, and every other toolchain still builds from source.
 
 ## 0.5.0: Ready
 

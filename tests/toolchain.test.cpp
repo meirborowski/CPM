@@ -226,7 +226,7 @@ TEST(builds_with_each_compiler_family_the_machine_has) {
         CHECK_EQ(built.exit_code, 0);
         CHECK_EQ(built.plan.toolchain.chosen_by, "from --toolchain");
         auto out = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
-        CHECK(out.out.starts_with(family));
+        CHECK(out.out.starts_with(family == "apple-clang" ? "clang" : family));  // Apple's Clang defines __clang__
         abis.insert(build::load_project(app, "debug", req.toolchain, manifest::UserConfig{}).abi.dir());
     }
     CHECK_EQ(abis.size(), families.size());  // each compiler builds for its own ABI

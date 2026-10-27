@@ -5,6 +5,6 @@
 namespace cpm {
 
 // Must match "version" in cpm.jsonc (checked by tests/version.test.cpp).
-inline constexpr std::string_view version = "0.4.5";
+inline constexpr std::string_view version = "0.4.8";
 
 }  // namespace cpm

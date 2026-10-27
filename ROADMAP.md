@@ -12,7 +12,7 @@ We get there in small releases, 0.4.1, 0.4.2 and so on. Each one is useful on it
 | 0.4.4 | Choose the compiler | List compilers; pick one per machine, project or command (released 2026-10-21) |
 | 0.4.5 | C sources | Compile `.c` files, in projects and in C libraries from git (released 2026-10-25) |
 | 0.4.6 | CPM-native libraries | cpm-org's own JSON, logging, arguments and benchmark libraries on cpm-registry.com (published 2026-10-26, no CPM release) |
-| 0.4.8 | MSVC, part 1 | Build and test with Visual Studio's compiler |
+| 0.4.8 | MSVC, part 1 | Build and test with Visual Studio's compiler (released 2026-10-27) |
 | 0.4.9 | MSVC, part 2 | Shared libraries and dependencies with MSVC |
 | 0.4.10 | Symbol isolation | Let a dependency keep its own copy of a library, without clashes |
 | 0.4.11 | Workspaces, part 1 | Several packages in one repository, one lockfile |

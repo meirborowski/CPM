@@ -2,6 +2,34 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.8 — 2026-10-27
+
+Build and test with Visual Studio's compiler, MSVC, without a Developer Command Prompt. (0.4.6 and 0.4.7 have no CPM releases: 0.4.6 was cpm-org's libraries on the registry, and prebuilt binaries moved later.)
+
+### New
+
+- **MSVC is one more toolchain.**
+  - Choose it with `--toolchain msvc`, `"toolchain": "msvc"` in `cpm.jsonc`, or `cpm toolchain use msvc`.
+  - Version ranges work as for the other compilers, such as `msvc >=19.44`.
+  - Programs and static libraries build with `cl.exe`, `lib.exe` and `link.exe`, and `cpm run` and `cpm test` work.
+- **No Developer Command Prompt.** CPM finds Visual Studio and its Build Tools with `vswhere`, and runs `vcvarsall.bat` once per toolset. It caches the environment that sets, so only the first build with a toolset takes a few seconds longer.
+- **`cpm toolchain list` shows MSVC:** one line per toolset, with its Visual Studio and toolset version.
+- **Dependencies build with MSVC too:** registry and git packages in the sandbox, and path packages in the build, C sources included.
+- **A machine with only Visual Studio works as it is.** With no GCC or Clang on `PATH`, CPM chooses the newest MSVC and the Ninja that Visual Studio installs with its CMake tools. `cpm setup` counts both.
+- **Profiles map to MSVC's flags:**
+  - optimization, debug information (in the object files, `/Z7`), `NDEBUG`, LTO and the address sanitizer;
+  - the static runtime (`/MT`), and `debugRuntime` (`/MDd`, `/MTd`);
+  - the warning levels: `strict` adds the conversion and virtual-function warnings that `/W4` leaves off.
+
+  Every compile also gets `/utf-8 /permissive- /Zc:__cplusplus /Zc:preprocessor`.
+
+### Also
+
+- **Fingerprints:** an MSVC build's ABI fingerprint covers the compiler's exact version, the standard library's version and the runtime library. Updating Visual Studio therefore rebuilds dependencies.
+- **Shared libraries** with MSVC come in 0.4.9. Until then they're an error that says so.
+- **Clang for the MSVC ABI:** a Clang that targets the MSVC ABI is still skipped, and the error now suggests `--toolchain msvc`.
+- **CPM itself** builds with MSVC, from the bootstrap on (`scripts/selfhost.ps1 -Toolchain msvc`), and CI runs a Windows MSVC job.
+
 ## 0.4.5 — 2026-10-25
 
 Compile C next to C++, so projects can build their own C code and C libraries.

@@ -312,6 +312,15 @@ $ cpm toolchain list
 note: * is what cpm build uses here: gcc 13.2.0, found on PATH
 ```
 
+On Windows, MSVC is listed with its Visual Studio and toolset, one line per toolset:
+
+```
+  family  version      path
+* gcc     16.2.0       C:/Users/me/.cpm/tools/winlibs-16.2.0/mingw64/bin/g++.exe
+  msvc    19.51.36260  C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe
+                       (Visual Studio Community 2026 18.11, toolset 14.51.36231)
+```
+
 `cpm toolchain use <choice>` sets the machine's compiler in `$CPM_HOME/config.jsonc`, editing it in place:
 - A request such as `clang` or `gcc >=14` is saved as `"toolchain"`. It must match a compiler CPM finds, so that a typo doesn't surface at the next build.
 - A compiler name or path is saved as `"cxx"`, after checking that CPM can use it.
@@ -333,7 +342,7 @@ Packs the current package and adds its version to a registry ([registry.md §6](
 cpm setup [--check] [--yes] [--managed] [--compiler gcc|clang]
 ```
 
-Makes the machine ready to build: a C++ compiler CPM supports (GCC 13+, Clang 17+, Apple Clang 15+), Ninja 1.10+, and the helpers it drives (`git`, `curl`, `tar`). The one-line installers run it after installing CPM ([registry.md §8](registry.md#8-installing-cpm)). It first reports what it finds, then installs what is missing:
+Makes the machine ready to build: a C++ compiler CPM supports (GCC 13+, Clang 17+, Apple Clang 15+, or on Windows MSVC 19.40+ from Visual Studio 2022 17.10 or later), Ninja 1.10+, and the helpers it drives (`git`, `curl`, `tar`). A Visual Studio with the C++ tools counts as Windows' compiler, and its Ninja as Ninja ([build.md §1.4](build.md#14-finding-compilers), [§6](build.md#6-running-ninja)), so a machine with only Visual Studio needs no downloads. The one-line installers run it after installing CPM ([registry.md §8](registry.md#8-installing-cpm)). It first reports what it finds, then installs what is missing:
 
 | Platform | Compiler | Ninja | git and curl |
 |---|---|---|---|
@@ -351,7 +360,7 @@ With `apt-get`, CPM installs a versioned GCC package such as `g++-14` only if `a
   - macOS: `brew install gcc` or `brew install llvm`, which needs Homebrew. Without `--compiler`, macOS uses Apple's Clang from the Command Line Tools.
   - Windows: `gcc` is WinLibs GCC, as without `--compiler`. `clang` isn't offered yet; CPM says so and suggests llvm-mingw or MSYS2's `mingw-w64-ucrt-x86_64-clang`.
 - `--managed` installs the tools CPM can provide into `$CPM_HOME/tools` (on Windows the compiler and Ninja, elsewhere Ninja) even when usable ones are already installed, and points the configuration at them.
-- **Last**, CPM checks the result the way a build would use it: it probes the compiler, checks that it accepts `-std=c++23`, and runs `ninja --version`.
+- **Last**, CPM checks the result the way a build would use it: it probes the compiler, checks that it accepts C++23 (`-std=c++23`, or MSVC's spelling of it), and runs `ninja --version`.
 
 ### `cpm login`, `cpm logout`, `cpm whoami`
 

@@ -23,18 +23,18 @@ The first of these that makes a choice wins:
 2. **The environment:** `CXX`, a compiler name or path.
 3. **The project:** `"toolchain"` in its `cpm.jsonc` ([manifest.md §3](manifest.md#3-field-reference)).
 4. **The machine:** `"cxx"` or `"toolchain"` in `$CPM_HOME/config.jsonc`, which `cpm toolchain use` and `cpm setup` write ([cli.md §5](cli.md#5-configuration)). When both are there, `"cxx"` wins.
-5. **Automatic:** `clang++`, then `g++`, on `PATH`. A `clang++` that targets the MSVC ABI (`*-windows-msvc`, as LLVM's Windows installer and Visual Studio install it) is skipped until CPM supports MSVC.
+5. **Automatic:** `clang++`, then `g++`, on `PATH`; then, on Windows, the newest MSVC that Visual Studio has installed (§1.4). A `clang++` that targets the MSVC ABI (`*-windows-msvc`, as LLVM's Windows installer and Visual Studio install it) is skipped: CPM supports the MSVC ABI through `cl.exe`, not through Clang.
 
 A *choice* is one of two things:
 - **A compiler:** a program name, looked up on `PATH` (`g++-14`, `clang++`), or a path. On Windows the lookup tries only `.exe` and `.com`, the extensions `CreateProcess` can start directly, rather than every `PATHEXT` entry.
-- **A request:** a family, optionally followed by a version range: `gcc`, `clang >=18`, `apple-clang`, `gcc 14` (§1.4). The families are `gcc`, `clang` and `apple-clang`. `clang` means LLVM's Clang, not Apple's. A project's `"toolchain"` takes only requests, since paths differ between machines. It can also list several requests, which are tried in order: `["gcc >=14", "clang >=18", "apple-clang >=16"]`.
+- **A request:** a family, optionally followed by a version range: `gcc`, `clang >=18`, `apple-clang`, `gcc 14`, `msvc >=19.44` (§1.4). The families are `gcc`, `clang`, `apple-clang` and `msvc`. `clang` means LLVM's Clang, not Apple's. `msvc` means Visual Studio's `cl.exe`. Its version is the compiler's (`19.51.36260`), not Visual Studio's (`18.11`) or the toolset's (`14.51`). A project's `"toolchain"` takes only requests, since paths differ between machines. It can also list several requests, which are tried in order: `["gcc >=14", "clang >=18", "apple-clang >=16"]`.
 
 The resolved absolute path identifies the toolchain from then on.
 
 - **What chose it.** Every build says which compiler it uses and what chose it: `Compiling hello v0.1.0 (debug, gcc 14.2.0, from cpm.jsonc)`. The sources read `from --toolchain`, `from --cxx`, `from CXX`, `from cpm.jsonc`, `from config.jsonc` and `found on PATH`. With `-v` the line also gives the compiler's path.
 - **Disagreements.** When the command or `CXX` chooses a compiler that the project's `"toolchain"` doesn't accept, CPM warns and uses the chosen compiler, so a project can still be tried with other compilers.
 - **Nothing matches.** A request that no compiler on the machine meets is an error. It names the request and what made it, lists the compilers CPM found, and says how to get one: `cpm setup --compiler gcc` or `cpm setup --compiler clang` where `cpm setup` can install it ([cli.md](cli.md#cpm-setup)).
-- A compiler that targets the MSVC ABI, named explicitly, is an error with a hint to use a MinGW toolchain.
+- A Clang that targets the MSVC ABI (`clang-cl`, or a `clang++` for `*-windows-msvc`), named explicitly, is an error with a hint to use `--toolchain msvc` or a MinGW toolchain.
 
 ### 1.2 Family and companion tools
 
@@ -44,6 +44,7 @@ The resolved absolute path identifies the toolchain from then on.
   - CPM looks for it only when the build compiles C: the root, a path dependency, or a package being built in the sandbox (§5) has `.c` sources.
   - It MUST report the same family, version and target as the C++ compiler, so that C and C++ objects come from one toolchain. When it is missing, or reports something else, the build fails with an error that names both compilers and what each one reported.
   - `CC` is not read. The C++ compiler choice (§1.1) picks the toolchain, and the C compiler comes with it.
+- **MSVC's tools:** `lib.exe` (the archiver) and `link.exe` (the linker) come from the directory of the `cl.exe` chosen, by absolute path, so that another `link` on `PATH` (Git for Windows has one) is never taken.
 - **Linker:** the C++ compiler driver (`link.exe` for MSVC), also for targets whose own code is all C. It links the C++ runtime that mixed targets and C++ dependencies need, so CPM doesn't have to track which packages contain C++. On platforms where the linker keeps shared libraries that nothing uses, a pure C program then lists the C++ runtime among its dependencies.
 
 ### 1.3 Probe cache
@@ -72,7 +73,28 @@ The resolved absolute path identifies the toolchain from then on.
 }
 ```
 
-An entry is reused while the compiler file's size and mtime are unchanged. `stdFlags` records the accepted spelling of each standard the first time it is requested. The final name (`-std=c++23`) is tried first, then the provisional one (`-std=c++2b`, `-std=c++2c`).
+An MSVC entry also records:
+- its Visual Studio installation and toolset;
+- its environment (§1.5);
+- the text that starts `/showIncludes` lines, which localised installations translate.
+
+```json
+"C:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/cl.exe": {
+  "stamp": { "size": 1081976, "mtime": 1774137600 },
+  "family": "msvc",
+  "version": "19.51.36260",
+  "target": "x86_64-pc-windows-msvc",
+  "ar": ".../bin/Hostx64/x64/lib.exe",
+  "linker": ".../bin/Hostx64/x64/link.exe",
+  "vs": { "path": "C:/Program Files/Microsoft Visual Studio/18/Community", "name": "Visual Studio Community 2026", "version": "18.11.0", "toolset": "14.51.36231" },
+  "env": { "INCLUDE": "…", "LIB": "…", "LIBPATH": "…", "PATH": "…" },
+  "depsPrefix": "Note: including file:",
+  "stdFlags": { "c++20": "/std:c++20", "c++23": "/std:c++23preview" },
+  "inputs": { "arch": "x86_64", "compiler": "msvc", "crt": "ucrt", "os": "windows", "stdlib": "msvc-stl", "stdlib.abi": "145" }
+}
+```
+
+An entry is reused while the compiler file's size and mtime are unchanged. `stdFlags` records the accepted spelling of each standard the first time it is requested. The final name (`-std=c++23`) is tried first, then the provisional one (`-std=c++2b`, `-std=c++2c`). MSVC's spellings are in §3.
 
 `c` is added the first time a build needs the C compiler (§1.2), and probed again when the C compiler's own size or mtime change. `cstdFlags` works like `stdFlags`: `-std=c23` is tried before `-std=c2x`, and `-std=gnu23` before `-std=gnu2x`. The other standards have one spelling.
 
@@ -83,54 +105,71 @@ An entry is reused while the compiler file's size and mtime are unchanged. `stdF
 1. every directory on `PATH`: `g++` and `clang++`, and versioned names such as `g++-14` and `clang++-18` (`.exe` on Windows);
 2. `$CPM_HOME/tools`: the `bin` directories of the tools `cpm setup` installed (`<tool>/bin` and `<tool>/mingw64/bin`);
 3. on Windows, MSYS2's environments: `ucrt64/bin`, `clang64/bin` and `mingw64/bin` under `C:/msys64`, or under `MSYS2_ROOT` when it is set;
-4. on macOS, Homebrew's LLVM, which isn't on `PATH`: `/opt/homebrew/opt/llvm/bin` and `/usr/local/opt/llvm/bin`.
+4. on macOS, Homebrew's LLVM, which isn't on `PATH`: `/opt/homebrew/opt/llvm/bin` and `/usr/local/opt/llvm/bin`;
+5. on Windows, Visual Studio and its Build Tools:
+   - CPM asks `vswhere.exe` (in `%ProgramFiles(x86)%/Microsoft Visual Studio/Installer/`) for every installation that has the C++ tools: `vswhere -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json -utf8`.
+   - Each MSVC toolset an installation has, `VC/Tools/MSVC/<toolset>/`, gives a `cl.exe` in `bin/Hostx64/x64/` (`bin/Hostarm64/arm64/` on ARM64 Windows).
+   - A `cl.exe` on `PATH`, as in a Developer Command Prompt, is found under the name `cl` in step 1.
 
 - A program found under two names, such as `g++` and a `g++-13` it links to, is listed once, under the first name found.
-- Each compiler is probed (§1.3, so only new or changed compilers run). A compiler is *usable* when it is GCC or Clang and doesn't target the MSVC ABI. One older than the versions CPM supports (GCC 13, Clang 17, Apple Clang 15) is still usable, with a note, since many projects need less than C++23.
+- Each compiler is probed (§1.3, so only new or changed compilers run). A compiler is *usable* when it is GCC, MSVC, or a Clang that doesn't target the MSVC ABI. One older than the versions CPM supports (GCC 13, Clang 17, Apple Clang 15, MSVC 19.40 from Visual Studio 2022 17.10) is still usable, with a note, since many projects need less than C++23.
 - **Matching a request:** among the usable compilers of the requested family whose version is in the range, the one with the highest version wins. A tie goes to the one found first. Versions compare as `MAJOR.MINOR.PATCH`, and ranges are written as in [dependencies.md §3](dependencies.md#3-ranges), so `14` means any 14.x and `>=13` any version from 13 on.
-- Looking for compilers lists directories and reads the probe cache. It runs no programs on a warm cache, so builds that use requests keep their no-op cost (overview).
+- Looking for compilers lists directories and reads the probe cache. It runs no programs on a warm cache, so builds that use requests keep their no-op cost (overview). `vswhere`'s answer is cached in `toolchains.json` too. It is asked again only when the Visual Studio Installer's instance directory (`%ProgramData%/Microsoft/VisualStudio/Packages/_Instances`) has changed, which happens when an installation is added, changed or removed.
+
+### 1.5 MSVC's environment
+
+`cl.exe` and `link.exe` find the C++ library, the Windows SDK and the C runtime through the environment variables `INCLUDE`, `LIB` and `LIBPATH`, and they need some directories on `PATH`. A Developer Command Prompt sets these by running `vcvarsall.bat`. CPM doesn't need one:
+
+- **Capture.** For each MSVC toolset it uses, CPM runs once: `cmd /d /c "call "<vs>/VC/Auxiliary/Build/vcvarsall.bat" <arch> -vcvars_ver=<toolset> >nul 2>nul && set"`, which takes a few seconds. `<arch>` is `x64`, or `arm64` on ARM64 Windows.
+- **Cache.** It keeps `INCLUDE`, `LIB`, `LIBPATH`, and the directories `vcvarsall.bat` put in front of `PATH`, in the probe cache (§1.3).
+- **Use.** That environment is used for the compiler's probes, Ninja (§6), dependency builds (§5), `cpm test` (§7) and `cpm run`. `INCLUDE`, `LIB` and `LIBPATH` replace the inherited values, and the `PATH` directories go in front of the inherited `PATH`.
+- **Refresh.** It is captured again when `cl.exe` changes (its stamp), or when one of its `INCLUDE` or `LIB` directories no longer exists, as after a Windows SDK is uninstalled.
+- **Developer Command Prompt.** There, CPM still uses its own captured environment for the toolset it chose, so a build never depends on which prompt started it.
 
 ## 2. Drivers
 
 A **driver** turns the abstract plan into concrete command lines for one compiler family ([architecture.md §4](architecture.md#4-core-data-structures), `cpm::Driver`):
 
-| Responsibility | GCC / Clang driver | MSVC / clang-cl driver (*post-MVP*) |
+| Responsibility | GCC / Clang driver | MSVC driver |
 |---|---|---|
 | Compile rule and header dependencies | `-MD -MF $out.d`, `deps = gcc` | `/showIncludes`, `deps = msvc`, `msvc_deps_prefix` probed (it is localised) |
 | Object extension | `.o` | `.obj` |
 | Executable | `<name>` / `<name>.exe` | `<name>.exe` |
 | Static library | `lib<name>.a` (including MinGW) | `<name>.lib` |
-| Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + `<name>.lib` |
+| Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + `<name>.lib` (0.4.9; until then a shared library is an error with MSVC) |
 | Library search | `-L<dir> -l<name>` | `/LIBPATH:<dir> <name>.lib` |
 | Response files | `@file` | `@file` |
-| Environment | inherited | `vcvars` environment captured once (`cmd /c "vcvars64.bat >nul && set"`), cached, and passed to Ninja |
+| Archive and link | `gcc-ar`/`llvm-ar` `rcs`; the C++ compiler links | `lib /nologo /OUT:$out @$out.rsp`; `link /nologo /OUT:$out /INCREMENTAL:NO @$out.rsp` |
+| Environment | inherited | captured from `vcvarsall.bat` (§1.5) |
 
 ## 3. Profile to flag mapping
 
-| Setting | GCC / Clang | MSVC (*post-MVP*) |
+| Setting | GCC / Clang | MSVC |
 |---|---|---|
-| `std` (C++ only) | `-std=c++11` … `-std=c++26` (spelling from the probe cache) | `/std:c++14` (also used for `c++11`, the oldest MSVC mode), `/std:c++17`, `/std:c++20`, `/std:c++latest` (or `/std:c++23preview` if supported) |
+| `std` (C++ only) | `-std=c++11` … `-std=c++26` (spelling from the probe cache) | `/std:c++14` (also used for `c++11`, the oldest MSVC mode), `/std:c++17`, `/std:c++20`. For `c++23`, the first that is accepted of `/std:c++23`, `/std:c++23preview` and `/std:c++latest`. For `c++26`, `/std:c++latest`. The spelling is found as for GCC (§1.3): MSVC answers a flag it doesn't know with warning D9002 |
 | `cstd` (C only, the package's own) | `-std=c89` … `-std=gnu23` (spelling from the probe cache) | `/std:c11`, `/std:c17`, `/std:clatest` for `c23`. `c89` and `c99` use MSVC's default C mode, and each GNU dialect maps to its ISO standard |
 | `opt` `0` / `1` / `2` / `3` / `s` / `z` | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | `/Od` / `/O2` / `/O2` / `/O2` / `/O1` / `/O1` |
 | `debug: true` | `-g` | compile `/Z7`, link `/DEBUG` |
 | `assertions: false` | `-DNDEBUG` | `/DNDEBUG` |
-| `lto: true` | compile and link `-flto` (`-flto=auto` on GCC); archiver `gcc-ar`/`llvm-ar` | compile `/GL`, link `/LTCG` |
-| `sanitizers` | compile and link `-fsanitize=<list> -fno-omit-frame-pointer` | `address` → `/fsanitize=address`; others warn and are dropped |
+| `lto: true` | compile and link `-flto` (`-flto=auto` on GCC); archiver `gcc-ar`/`llvm-ar` | compile `/GL`, link and `lib` `/LTCG` |
+| `sanitizers` | compile and link `-fsanitize=<list> -fno-omit-frame-pointer` | `address` → `/fsanitize=address`, whose runtime DLL is found through the environment of §1.5; others warn and are dropped |
 | `runtime: static` | link: Linux/macOS `-static-libstdc++ -static-libgcc`; MinGW `-static` | `/MT` instead of `/MD` |
 | `debugRuntime: true` | — | `/MDd` or `/MTd` |
 | `warnings: none` | `-w` | `/W0` |
 | `warnings: default` | `-Wall -Wextra` | `/W4` |
-| `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, plus `-Wnon-virtual-dtor -Woverloaded-virtual` for C++ | `/W4 /permissive-` plus the driver's strict lint set |
+| `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, plus `-Wnon-virtual-dtor -Woverloaded-virtual` for C++ | `/W4`, plus the warnings that `/W4` leaves off and GCC's set has: conversions that lose data or change sign (`/w14242 /w14254 /w14365 /w14826`), a class with virtual functions and a non-virtual destructor (`/w14265`), a virtual function hidden by an overload (`/w14263`), and suspicious comparisons and casts (`/w14287 /w14296 /w14905 /w14906 /w14928`) |
 | `werror: true` | `-Werror` | `/WX` |
 | PIC (dependency builds, shared libraries; not on Windows) | `-fPIC` | — |
-| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /EHsc /utf-8 /Zc:__cplusplus` |
+| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /utf-8 /Zc:preprocessor /bigobj`, and for C++ `/EHsc /Zc:__cplusplus /permissive-`. MSVC has no colour flag. Links always get `/INCREMENTAL:NO` |
 | `cflags` / `cxxflags` / `ldflags` | appended last, verbatim: `cflags` to C compiles, `cxxflags` to C++ compiles | appended last, verbatim |
 
 The rest of a profile applies to C as it does to C++: `opt`, `debug`, `assertions`, `lto`, `sanitizers`, `warnings`, `werror`, `defines`, PIC and the colour flag. C and C++ translation units also get the same include directories and definitions (§4.3).
 
 The colour flag is always passed, so that changing the colour setting never changes command lines and never triggers a rebuild. Ninja strips colour codes itself when its output is not a terminal. CPM makes Ninja follow its own colour decision ([cli.md §1](cli.md#1-global-options)) by setting `CLICOLOR_FORCE=1` when colour is on and `TERM=dumb` when it is off.
 
-Unsupported combinations warn once and are dropped, never silently changed. Examples: sanitizers on MinGW, `memory` with GCC, `thread` together with `address`.
+Unsupported combinations warn once and are dropped, never silently changed. Examples: sanitizers on MinGW, `memory` with GCC, `thread` together with `address`, `undefined` with MSVC.
+
+With MSVC, `debug: true` puts the debug information in the object files (`/Z7`) rather than in a shared `.pdb`, so parallel compiles never compete for one file. The link then writes the program's `.pdb` next to it.
 
 ## 4. Build plan and Ninja generation
 
@@ -288,7 +327,7 @@ Dependencies are built in dependency order, and a failure stops the install. Hea
 
 ## 6. Running Ninja
 
-- **Discovery:** `CPM_NINJA`, then `PATH`, then `$CPM_HOME/tools/ninja[.exe]`. If none is found, the error includes install hints. *Post-MVP:* CPM downloads a pinned Ninja release into `tools/`.
+- **Discovery:** `CPM_NINJA`, then `PATH`, then `$CPM_HOME/tools/ninja[.exe]`, then on Windows the Ninja that Visual Studio installs with its CMake tools (`Common7/IDE/CommonExtensions/Microsoft/CMake/Ninja/ninja.exe` in an installation from §1.4). If none is found, the error includes install hints. *Post-MVP:* CPM downloads a pinned Ninja release into `tools/`.
 - **Invocation:** `ninja -f cpm_modules/.cache/<profile>/build.ninja [-j N] [-v] <targets>`, with the project root as working directory. `NINJA_STATUS` is set to `[%f/%t] `, and the toolchain environment (MSVC) is applied.
 - **Output:** streamed straight through. CPM adds a header line before it and a summary line after it ([cli.md §4](cli.md#4-output)).
 - **Exit status:** if Ninja exits non-zero, CPM exits with 1 after the compiler output has been shown. A failed build never changes `.cpm-modules.json` or the lockfile.

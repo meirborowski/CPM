@@ -203,7 +203,7 @@ CPM validates the manifest after parsing and reports **all** problems it finds, 
 - missing or invalid `name` or `version`; an unknown `type`, `std`, `cstd` or profile value
 - a dependency that appears in both `dependencies` and `devDependencies`
 - a dependency on the package itself
-- a `toolchain` request that isn't a family (`gcc`, `clang`, `apple-clang`) optionally followed by a version range
+- a `toolchain` request that isn't a family (`gcc`, `clang`, `apple-clang`, `msvc`) optionally followed by a version range
 - an `overrides` key that isn't a package name or `<dependent>><name>` with two different names, or a value that isn't a version range
 - a `main` that does not exist, or an explicit `type` that contradicts the files on disk (`executable` without an entrypoint)
 - `profiles` problems: a custom profile without `inherits`, an inheritance cycle, an invalid name

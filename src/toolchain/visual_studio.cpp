@@ -54,6 +54,8 @@ std::optional<fs::path> child(const fs::path& dir, std::string_view name) {
     return std::nullopt;
 }
 
+#ifdef _WIN32
+// The installations as cached in toolchains.json, with the instance directory's stamp they were found under.
 json::Value to_json(const std::vector<VisualStudio>& list, const std::string& stamp) {
     json::Value items = json::Value::array();
     for (const auto& vs : list) {
@@ -83,7 +85,6 @@ std::optional<std::vector<VisualStudio>> from_json(const json::Value& section, c
     }
 }
 
-#ifdef _WIN32
 // What changes when the Visual Studio Installer adds, changes or removes an installation: the instance directories
 // and their state.json files. Empty when there is no installer.
 std::string instances_stamp() {

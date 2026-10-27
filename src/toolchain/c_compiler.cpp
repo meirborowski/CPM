@@ -9,6 +9,7 @@
 #include "core/error.hpp"
 #include "core/log.hpp"
 #include "core/paths.hpp"
+#include "toolchain/msvc.hpp"
 #include "toolchain/probe.hpp"
 #include "toolchain/probe_cache.hpp"
 
@@ -30,6 +31,10 @@ std::optional<std::string> c_compiler_name(std::string_view cxx_file_name) {
 
 void find_c_compiler(Toolchain& tc, const fs::path& home) {
     if (tc.c) return;
+    if (tc.family == Family::Msvc) {
+        tc.c = CCompiler{.path = tc.cxx};  // cl.exe compiles C as well (build.md §1.2)
+        return;
+    }
     if (auto cached = cached_toolchain(tc.cxx, home); cached && cached->c) {
         tc.c = cached->c;
         return;
@@ -60,6 +65,7 @@ std::string cstd_flag(Toolchain& tc, const std::string& cstd, const fs::path& ho
     find_c_compiler(tc, home);
     std::map<std::string, std::string>& flags = tc.c->cstd_flags;
     if (auto it = flags.find(cstd); it != flags.end()) return it->second;
+    if (tc.family == Family::Msvc) return flags[cstd] = msvc::cstd_flag(cstd);
 
     static const std::map<std::string, std::string> provisional = {{"c23", "c2x"}, {"gnu23", "gnu2x"}};
     std::vector<std::string> spellings = {cstd};

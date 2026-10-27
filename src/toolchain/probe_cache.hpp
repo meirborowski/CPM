@@ -2,7 +2,9 @@
 
 #include <filesystem>
 #include <optional>
+#include <string_view>
 
+#include "json/value.hpp"
 #include "toolchain/toolchain.hpp"
 
 namespace cpm::toolchain {
@@ -17,5 +19,10 @@ std::optional<Toolchain> cached_toolchain(const std::filesystem::path& cxx, cons
 
 // Records `tc`, with its C compiler when it has one. Failing to write the cache is not an error.
 void cache_toolchain(const Toolchain& tc, const std::filesystem::path& home);
+
+// Another top-level section of toolchains.json, such as Visual Studio's installations ("visualStudio"), or nullopt
+// when it has none. Writing one replaces it; failing to write is not an error.
+std::optional<json::Value> cached_section(std::string_view key, const std::filesystem::path& home);
+void cache_section(std::string_view key, json::Value value, const std::filesystem::path& home);
 
 }  // namespace cpm::toolchain

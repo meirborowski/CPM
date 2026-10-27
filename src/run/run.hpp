@@ -19,16 +19,12 @@ struct Environment {
     std::string package_version;
     fs::path bin_dir;  // <root>/build/<profile>: the package's executable and libraries
     fs::path cpm_exe;  // the running cpm
-    // Windows: the compiler's directory, whose runtime DLLs (libstdc++ and friends) the program loads. Empty
-    // elsewhere and for scripts.
-    fs::path runtime_dir{};
+    // Windows: the directories whose DLLs the program loads (toolchain::runtime_dirs): MinGW's libstdc++ and
+    // friends, or MSVC's AddressSanitizer runtime. Empty elsewhere and for scripts.
+    std::vector<fs::path> runtime_dirs{};
 };
 
-// The directory whose DLLs programs built with this compiler need at run time on Windows (MinGW GCC and Clang
-// keep libstdc++, libgcc and winpthread next to the compiler), or empty where none is needed.
-fs::path runtime_dir(const fs::path& cxx, bool windows);
-
-// CPM_* variables plus PATH with the profile's bin directory, cpm's own directory and the runtime directory in
+// CPM_* variables plus PATH with the profile's bin directory, cpm's own directory and the runtime directories in
 // front, so a program finds the DLLs it was built with before any others on PATH.
 std::vector<std::pair<std::string, std::string>> variables(const Environment& env);
 

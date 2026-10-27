@@ -302,16 +302,17 @@ Manifest parse(std::string text, const fs::path& file, std::string display) {
                 c.type_error(*v, "a \"toolchain\" entry", "a string");
                 continue;
             }
-            std::string_view text = str::trim(v->as_string());
-            std::size_t space = text.find_first_of(" \t");
-            std::string_view family = text.substr(0, space), range = space == std::string_view::npos ? "" : str::trim(text.substr(space));
-            if (family != "gcc" && family != "clang" && family != "apple-clang") {
-                c.error(v->span(), std::format("\"{}\" is not a compiler request", text),
-                        "start with gcc, clang or apple-clang, optionally followed by a version range, such as \"gcc >=14\"");
+            std::string_view request = str::trim(v->as_string());
+            std::size_t space = request.find_first_of(" \t");
+            std::string_view family = request.substr(0, space);
+            std::string_view range = space == std::string_view::npos ? "" : str::trim(request.substr(space));
+            if (family != "gcc" && family != "clang" && family != "apple-clang" && family != "msvc") {
+                c.error(v->span(), std::format("\"{}\" is not a compiler request", request),
+                        "start with gcc, clang, apple-clang or msvc, optionally followed by a version range, such as \"gcc >=14\"");
             } else if (!range.empty() && !semver::Range::parse(range)) {
                 c.error(v->span(), std::format("invalid compiler version range \"{}\"", range), "use a range such as \">=14\", \"18\" or \"^13.2\"");
             } else {
-                m.toolchain.emplace_back(text);
+                m.toolchain.emplace_back(request);
             }
         }
     }

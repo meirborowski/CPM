@@ -1,3 +1,4 @@
+#include "core/fsx.hpp"
 #include "manifest/config.hpp"
 #include "manifest/manifest.hpp"
 #include "support/check.hpp"
@@ -156,13 +157,9 @@ TEST(user_config) {
     check::TempDir home;
     auto empty = manifest::load_user_config(home.path());
     CHECK(!empty.cxx.has_value());
-    {
-        std::FILE* f = std::fopen((home.path() / "config.jsonc").string().c_str(), "wb");
-        std::fputs(R"({ // comment
+    fsx::write_file_atomic(home.path() / "config.jsonc", R"({ // comment
   "registries": { "default": "https://r.example/", "local": { "url": "file:///c/r/", "allowHttp": true } },
-  "cxx": "clang++", "jobs": 4, "colour": "never" })", f);
-        std::fclose(f);
-    }
+  "cxx": "clang++", "jobs": 4, "colour": "never" })");
     auto cfg = manifest::load_user_config(home.path());
     CHECK_EQ(cfg.cxx.value_or(""), "clang++");
     CHECK_EQ(cfg.jobs.value_or(0), 4);

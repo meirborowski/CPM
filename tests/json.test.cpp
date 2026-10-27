@@ -1,3 +1,4 @@
+#include "core/fsx.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
 #include "support/check.hpp"
@@ -108,16 +109,11 @@ TEST(round_trips) {
 TEST(round_trips_the_spec_lockfile) {
     // docs/spec/lockfile.md §3: a canonical lockfile reads and writes back byte for byte.
     // Tests run from the project root.
-    std::FILE* f = std::fopen("docs/spec/examples/hello/cpm-lock.json", "rb");
-    CHECK(f != nullptr);
-    if (!f) return;
-    std::string text;
-    char buf[4096];
-    std::size_t n;
-    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) text.append(buf, n);
-    std::fclose(f);
+    std::optional<std::string> text = fsx::try_read_file("docs/spec/examples/hello/cpm-lock.json");
+    CHECK(text.has_value());
+    if (!text) return;
     // The top-level key order is fixed and every other level is sorted; this file's top level is already
     // in that order, so writing without re-sorting the top level must reproduce it.
-    json::Value v = json::parse(text, json::kStrict);
-    CHECK_EQ(json::write(v) + "\n", text);
+    json::Value v = json::parse(*text, json::kStrict);
+    CHECK_EQ(json::write(v) + "\n", *text);
 }

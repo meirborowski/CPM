@@ -30,11 +30,6 @@ namespace cpm::setup {
 
 namespace {
 
-// The oldest compilers CPM supports (README.md).
-constexpr int kMinGcc = 13;
-constexpr int kMinClang = 17;
-constexpr int kMinAppleClang = 15;
-
 int leading_number(std::string_view text) {
     int n = 0;
     std::size_t i = 0;
@@ -65,12 +60,10 @@ CompilerState inspect_compiler(const fs::path& home) {
     try {
         toolchain::Toolchain tc =
             toolchain::find_toolchain({.config_cxx = config.cxx, .config_toolchain = config.toolchain, .home = home});
-        int need = tc.family == toolchain::Family::Gcc          ? kMinGcc
-                   : tc.family == toolchain::Family::AppleClang ? kMinAppleClang
-                                                                : kMinClang;
-        if (leading_number(tc.version) < need) {
+        if (toolchain::older_than_supported(tc)) {
             s.problem = std::format("{} at {} is too old: CPM needs {} {} or newer", tc.description(),
-                                    paths::to_utf8(tc.cxx), toolchain::to_string(tc.family), need);
+                                    paths::to_utf8(tc.cxx), toolchain::to_string(tc.family),
+                                    toolchain::minimum_version(tc.family));
             return s;
         }
         toolchain::std_flag(tc, "c++23", home);  // throws when the compiler cannot do C++23

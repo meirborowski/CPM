@@ -49,6 +49,7 @@ std::string generate_ninja(const BuildPlan& plan, const toolchain::Driver& drive
     w.variable("cxx", ninja::args_value({paths::to_utf8(plan.toolchain.cxx)}));
     if (any_c) w.variable("cc", ninja::args_value({paths::to_utf8(plan.toolchain.c->path)}));
     w.variable("ar", ninja::args_value({paths::to_utf8(plan.toolchain.ar)}));
+    if (!plan.toolchain.linker.empty()) w.variable("linker", ninja::args_value({paths::to_utf8(plan.toolchain.linker)}));
     w.variable("cxxflags", ninja::args_value(plan.cxxflags));
     if (any_c) w.variable("cflags", ninja::args_value(plan.cflags));
     w.variable("defines", ninja::args_value(plan.defines));

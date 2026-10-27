@@ -15,7 +15,7 @@ namespace cpm::toolchain {
 
 namespace fs = std::filesystem;
 
-// A family, optionally with a version range: "gcc", "clang >=18", "apple-clang 16".
+// A family, optionally with a version range: "gcc", "clang >=18", "apple-clang 16", "msvc >=19.44".
 struct Request {
     Family family = Family::Gcc;
     std::optional<semver::Range> range;
@@ -45,6 +45,12 @@ struct Found {
 
 // Every compiler on this machine (build.md §1.4), probed through the cache in $CPM_HOME/toolchains.json.
 std::vector<Found> list_compilers(const fs::path& home);
+
+// The oldest version CPM supports for a family (build.md §1.4): "13", "17", "15", "19.40".
+std::string minimum_version(Family family);
+
+// Whether `tc` is older than that. Such a compiler still works, with a note, for projects that need less than C++23.
+bool older_than_supported(const Toolchain& tc);
 
 // The usable compiler that best meets the request: the highest version, then the one found first. nullptr if none.
 const Found* best_match(const std::vector<Found>& found, const Request& request);

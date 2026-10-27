@@ -2,6 +2,7 @@
 #include "core/proc.hpp"
 #include "run/run.hpp"
 #include "support/check.hpp"
+#include "toolchain/toolchain.hpp"
 
 using namespace cpm;
 namespace fs = std::filesystem;
@@ -53,15 +54,26 @@ TEST(environment_variables) {
 }
 
 TEST(the_compilers_runtime_libraries_are_found_on_windows) {
-    // MinGW programs load libstdc++ and friends from the compiler's bin directory.
-    CHECK(run::runtime_dir("C:/w/mingw64/bin/g++.exe", true) == fs::path("C:/w/mingw64/bin"));
-    CHECK(run::runtime_dir("/usr/bin/g++", false).empty());
+    // MinGW programs load libstdc++ and friends from the compiler's bin directory; MSVC's runtime directories are
+    // those vcvarsall.bat puts on PATH (build.md §1.5).
+    toolchain::Toolchain mingw;
+    mingw.os = Os::Windows;
+    mingw.cxx = "C:/w/mingw64/bin/g++.exe";
+    CHECK(toolchain::runtime_dirs(mingw) == std::vector<fs::path>{"C:/w/mingw64/bin"});
+    toolchain::Toolchain msvc = mingw;
+    msvc.family = toolchain::Family::Msvc;
+    msvc.env = {{"PATH", "C:/vs/bin/Hostx64/x64;C:/sdk/bin"}};
+    CHECK(toolchain::runtime_dirs(msvc) == (std::vector<fs::path>{"C:/vs/bin/Hostx64/x64", "C:/sdk/bin"}));
+    toolchain::Toolchain linux_gcc;
+    linux_gcc.os = Os::Linux;
+    linux_gcc.cxx = "/usr/bin/g++";
+    CHECK(toolchain::runtime_dirs(linux_gcc).empty());
 
     check::TempDir dir;
     auto env = test_env(dir.path());
-    env.runtime_dir = dir.path() / "mingw64" / "bin";
+    env.runtime_dirs = {dir.path() / "mingw64" / "bin"};
     std::string path = value_of(run::variables(env), "PATH");
-    std::string runtime = paths::to_native_utf8(env.runtime_dir);
+    std::string runtime = paths::to_native_utf8(env.runtime_dirs[0]);
     CHECK(path.find(runtime) != std::string::npos);
     CHECK(path.find(runtime) > path.find(value_of(run::variables(env), "CPM_BIN_DIR")));  // after the project's own programs
 }

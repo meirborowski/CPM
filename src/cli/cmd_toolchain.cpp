@@ -71,6 +71,13 @@ int list(const fs::path& cwd, const fs::path& home) {
         std::string extra = !f.problem.empty() ? "  (" + f.problem + ")" : !f.note.empty() ? "  (" + f.note + ")" : "";
         log::out(std::format("{} {:<{}}  {:<{}}  {}{}\n", star ? "*" : " ", family, family_width, version, version_width,
                              paths::to_utf8(f.cxx), extra));
+        // MSVC: which Visual Studio and toolset, on a line of its own under the path (cli.md, cpm toolchain).
+        if (f.toolchain && f.toolchain->visual_studio) {
+            const toolchain::VisualStudio& vs = *f.toolchain->visual_studio;
+            std::string version_text = vs.version.empty() ? "" : " " + vs.version;
+            log::out(std::format("  {:<{}}  {:<{}}  ({}{}, toolset {})\n", "", family_width, "", version_width, vs.name,
+                                 version_text, vs.toolset));
+        }
     }
     if (chosen) log::info(std::format("note: * is what cpm build uses here: {}, {}", chosen->description(), chosen->chosen_by));
     else log::info(std::format("note: cpm build can't choose a compiler here: {}", why_not));

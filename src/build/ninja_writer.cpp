@@ -53,6 +53,7 @@ void Writer::rule(const toolchain::NinjaRule& r) {
     if (!r.deps.empty()) variable("deps", r.deps, 2);
     if (!r.rspfile.empty()) variable("rspfile", r.rspfile, 2);
     if (!r.rspfile_content.empty()) variable("rspfile_content", r.rspfile_content, 2);
+    if (!r.msvc_deps_prefix.empty()) variable("msvc_deps_prefix", escape_value(r.msvc_deps_prefix), 2);
 }
 
 void Writer::build(const std::vector<std::string>& outputs, std::string_view rule, const std::vector<std::string>& inputs,

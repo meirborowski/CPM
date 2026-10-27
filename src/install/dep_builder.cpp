@@ -46,7 +46,7 @@ manifest::Profile dependency_profile(const manifest::Profile& root, const std::v
     p.cflags.clear();
     p.cxxflags.clear();
     for (const auto& f : root_cxxflags) {
-        if (f == "-fno-exceptions" || f == "-fno-rtti") p.cxxflags.push_back(f);
+        if (f == "-fno-exceptions" || f == "-fno-rtti" || f == "/EHs-c-" || f == "/GR-") p.cxxflags.push_back(f);
     }
     p.ldflags.clear();
     return p;
@@ -150,9 +150,12 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
     w.defaults({archive_name});
     fsx::write_file_atomic(sandbox / "build.ninja", w.str());
 
+    std::vector<std::pair<std::string, std::string>> env_set = toolchain::process_environment(tc);  // MSVC (build.md §1.5)
+    env_set.emplace_back("NINJA_STATUS", "[%f/%t] ");
+    env_set.emplace_back("TERM", "dumb");
     proc::Captured r = proc::capture({.argv = {paths::to_utf8(ninja), "-f", "build.ninja"},
                                       .cwd = sandbox,
-                                      .env_set = {{"NINJA_STATUS", "[%f/%t] "}, {"TERM", "dumb"}},
+                                      .env_set = env_set,
                                       .env_unset = {"CPATH", "C_INCLUDE_PATH", "CPLUS_INCLUDE_PATH", "LIBRARY_PATH"}},
                                      std::nullopt, true);
     fs::path log_file = project.home / "logs" / std::format("build-{}-{}.log", package.key(), abi);

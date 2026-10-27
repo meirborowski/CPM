@@ -5,10 +5,6 @@
 
 namespace cpm::run {
 
-fs::path runtime_dir(const fs::path& cxx, bool windows) {
-    return windows ? cxx.parent_path() : fs::path();
-}
-
 std::vector<std::pair<std::string, std::string>> variables(const Environment& env) {
 #ifdef _WIN32
     constexpr char sep = ';';
@@ -16,7 +12,7 @@ std::vector<std::pair<std::string, std::string>> variables(const Environment& en
     constexpr char sep = ':';
 #endif
     std::string path = paths::to_native_utf8(env.bin_dir) + sep + paths::to_native_utf8(env.cpm_exe.parent_path());
-    if (!env.runtime_dir.empty()) path += sep + paths::to_native_utf8(env.runtime_dir);
+    for (const auto& dir : env.runtime_dirs) path += sep + paths::to_native_utf8(dir);
     if (auto existing = env::get("PATH"); existing && !existing->empty()) path += sep + *existing;
     return {
         {"PATH", path},

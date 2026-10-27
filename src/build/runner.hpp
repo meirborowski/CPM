@@ -3,13 +3,15 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cpm::build {
 
 namespace fs = std::filesystem;
 
-// Ninja discovery (build.md §6): CPM_NINJA, the "ninja" config key, PATH, then $CPM_HOME/tools.
+// Ninja discovery (build.md §6): CPM_NINJA, the "ninja" config key, PATH, $CPM_HOME/tools, then on Windows the
+// Ninja Visual Studio ships with its CMake tools.
 fs::path find_ninja(const std::optional<std::string>& configured, const fs::path& home);
 
 struct NinjaRun {
@@ -19,6 +21,7 @@ struct NinjaRun {
     std::vector<std::string> targets;
     int jobs = 0;                     // 0 = Ninja's default
     bool verbose = false;
+    std::vector<std::pair<std::string, std::string>> env{};  // the toolchain's (toolchain::process_environment)
 };
 
 // Runs Ninja with its output on our stderr. Returns Ninja's exit code.

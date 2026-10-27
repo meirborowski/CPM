@@ -12,33 +12,20 @@
 #include "core/proc.hpp"
 #include "core/strings.hpp"
 #include "toolchain/probe.hpp"
+#include "toolchain/visual_studio.hpp"
 
 namespace cpm::toolchain {
 
 namespace {
 
-// The oldest compilers CPM supports (README.md). Older ones still work for projects that need less than C++23.
-int minimum_major(Family family) {
-    switch (family) {
-        case Family::Gcc: return 13;
-        case Family::AppleClang: return 15;
-        default: return 17;
-    }
-}
-
-int major_of(const std::string& version) {
-    int n = 0;
-    std::size_t i = 0;
-    while (i < version.size() && version[i] >= '0' && version[i] <= '9') n = n * 10 + (version[i++] - '0');
-    return i == 0 ? -1 : n;
-}
-
-// "g++", "clang++", "g++-14", "clang++-18" (".exe" on Windows): the family's program name and its version suffix.
+// "g++", "clang++", "g++-14", "clang++-18" (".exe" on Windows), and on Windows "cl": the family's program name and
+// its version suffix.
 std::optional<std::pair<std::string, int>> compiler_name(std::string name) {
 #ifdef _WIN32
     name = str::to_lower(name);
     if (!name.ends_with(".exe")) return std::nullopt;
     name.resize(name.size() - 4);
+    if (name == "cl") return std::pair{name, 0};
 #endif
     for (const char* base : {"clang++", "g++"}) {
         std::string_view b = base;
@@ -65,25 +52,30 @@ std::string found_list(const std::vector<Found>& found) {
 
 std::string install_hint(Family family) {
     if (family == Family::AppleClang) return "install Apple's Command Line Tools: xcode-select --install";
+    if (family == Family::Msvc) {
+        return "install Visual Studio or its Build Tools with the workload \"Desktop development with C++\"";
+    }
 #ifdef _WIN32
     if (family == Family::Clang) return "install llvm-mingw or MSYS2's mingw-w64-ucrt-x86_64-clang";
 #endif
     return std::format("install one with: cpm setup --compiler {}", family == Family::Gcc ? "gcc" : "clang");
 }
 
+constexpr const char* kMsvcAbiHint =
+    "use --toolchain msvc for Visual Studio's compiler, or a MinGW toolchain (g++ or clang++ from MSYS2 or llvm-mingw)";
+
 // A compiler named by a program name or path: the rules of build.md §1.1 for --cxx, CXX and "cxx".
 Toolchain named_compiler(const std::string& text, const std::string& source, const fs::path& home) {
     auto p = proc::find_program(text);
     if (!p) throw Error(std::format("compiler '{}' (from {}) not found", text, source), "check the name, or give a full path");
-    std::string stem = str::to_lower(paths::to_utf8(p->stem()));
-    if (stem == "cl" || stem == "clang-cl") {
-        throw Error(std::format("'{}' is an MSVC-style compiler, which CPM does not support yet", paths::to_utf8(*p)),
-                    "CPM's MSVC support is planned for 0.4.8; use g++ or clang++ for now (e.g. --toolchain gcc)");
+    if (str::to_lower(paths::to_utf8(p->stem())) == "clang-cl") {
+        throw Error(std::format("'{}' is clang-cl, which CPM does not support", paths::to_utf8(*p)), kMsvcAbiHint);
     }
     Toolchain tc = probe_compiler(*p, home);
     if (targets_msvc(tc)) {
-        throw Error(std::format("{} targets the MSVC ABI ({}), which CPM does not support yet", paths::to_utf8(tc.cxx), tc.target),
-                    "use a MinGW toolchain (g++ or clang++ from MSYS2 or llvm-mingw), e.g. --toolchain gcc");
+        throw Error(std::format("{} is a Clang that targets the MSVC ABI ({}); CPM uses Visual Studio's cl.exe for that",
+                                paths::to_utf8(tc.cxx), tc.target),
+                    kMsvcAbiHint);
     }
     return tc;
 }
@@ -106,26 +98,57 @@ Toolchain requested_compiler(const std::vector<std::string>& requests, const std
                 first_family ? install_hint(*first_family) + ", or choose another with --toolchain" : std::string());
 }
 
-Toolchain automatic(const fs::path& home) {
-    std::vector<fs::path> candidates;
-    for (const char* name : {"clang++", "g++"}) {
-        if (auto p = proc::find_program(name)) candidates.push_back(*p);
-    }
-    if (candidates.empty()) {
-        throw Error("no C++ compiler found (looked for clang++ and g++ on PATH)",
-                    "run cpm setup to install one, or choose one with --toolchain or CXX");
-    }
-    for (std::size_t i = 0; i < candidates.size(); ++i) {
-        Toolchain tc = probe_compiler(candidates[i], home);
-        if (!targets_msvc(tc)) return tc;
-        // clang++ comes first, and Windows machines often have one that targets MSVC: move on to g++.
-        if (i + 1 == candidates.size()) {
-            throw Error(std::format("{} targets the MSVC ABI ({}), which CPM does not support yet", paths::to_utf8(tc.cxx), tc.target),
-                        "use a MinGW toolchain (g++ or clang++ from MSYS2 or llvm-mingw); cpm setup installs one");
+// The MSVC compilers of the Visual Studio installations on this machine (build.md §1.4).
+std::vector<Found> visual_studio_compilers(const fs::path& home) {
+    std::vector<Found> out;
+    for (const auto& vs : vs::installations(home)) {
+        for (const auto& dir : vs::compiler_dirs(vs)) {
+            Found f;
+            f.cxx = dir / "cl.exe";
+            try {
+                f.toolchain = probe_compiler(f.cxx, home);
+            } catch (const Error& e) {
+                log::verbose(std::format("skipping {}: {}", paths::to_utf8(f.cxx), e.what()));
+                continue;
+            }
+            out.push_back(std::move(f));
         }
-        log::verbose(std::format("skipping {}: it targets the MSVC ABI ({})", paths::to_utf8(tc.cxx), tc.target));
     }
-    throw Error("no usable C++ compiler found");  // not reached
+    return out;
+}
+
+// clang++, then g++, on PATH; then on Windows the newest MSVC that Visual Studio has (build.md §1.1).
+Toolchain automatic(const fs::path& home) {
+    std::optional<Toolchain> msvc_abi_clang;
+    for (const char* name : {"clang++", "g++"}) {
+        auto p = proc::find_program(name);
+        if (!p) continue;
+        Toolchain tc = probe_compiler(*p, home);
+        if (!targets_msvc(tc)) {
+            tc.chosen_by = "found on PATH";
+            return tc;
+        }
+        // Windows machines often have a clang++ that targets MSVC: move on.
+        log::verbose(std::format("skipping {}: it targets the MSVC ABI ({})", paths::to_utf8(tc.cxx), tc.target));
+        msvc_abi_clang = tc;
+    }
+    std::vector<Found> msvc = visual_studio_compilers(home);
+    if (const Found* f = best_match(msvc, Request{Family::Msvc, std::nullopt, "msvc"})) {
+        Toolchain tc = *f->toolchain;
+        tc.chosen_by = "found in Visual Studio";
+        return tc;
+    }
+    if (msvc_abi_clang) {
+        throw Error(std::format("{} is a Clang that targets the MSVC ABI ({}); CPM uses Visual Studio's cl.exe for that",
+                                paths::to_utf8(msvc_abi_clang->cxx), msvc_abi_clang->target),
+                    "install Visual Studio's C++ tools or a MinGW toolchain; cpm setup installs one");
+    }
+#ifdef _WIN32
+    const char* looked = "no C++ compiler found (looked for clang++ and g++ on PATH, and for Visual Studio's C++ tools)";
+#else
+    const char* looked = "no C++ compiler found (looked for clang++ and g++ on PATH)";
+#endif
+    throw Error(looked, "run cpm setup to install one, or choose one with --toolchain or CXX");
 }
 
 }  // namespace
@@ -138,6 +161,7 @@ std::optional<Request> parse_request(std::string_view text) {
     if (word == "gcc") r.family = Family::Gcc;
     else if (word == "clang") r.family = Family::Clang;
     else if (word == "apple-clang") r.family = Family::AppleClang;
+    else if (word == "msvc") r.family = Family::Msvc;
     else return std::nullopt;
     r.text = std::string(t);
     std::string_view rest = space == std::string_view::npos ? std::string_view() : str::trim(t.substr(space));
@@ -145,7 +169,7 @@ std::optional<Request> parse_request(std::string_view text) {
         r.range = semver::Range::parse(rest);
         if (!r.range) {
             throw Error(std::format("invalid compiler version range \"{}\" in \"{}\"", rest, t),
-                        "write a family and a range, such as \"gcc >=14\", \"clang 18\" or \"gcc ^13.2\"");
+                        "write a family and a range, such as \"gcc >=14\", \"clang 18\", \"gcc ^13.2\" or \"msvc >=19.44\"");
         }
     }
     return r;
@@ -176,6 +200,9 @@ std::vector<fs::path> compiler_dirs(const fs::path& home) {
 #ifdef _WIN32
     fs::path msys = paths::from_utf8(env::get("MSYS2_ROOT").value_or("C:/msys64"));
     for (const char* env_dir : {"ucrt64", "clang64", "mingw64"}) dirs.push_back(msys / env_dir / "bin");
+    for (const auto& vs : vs::installations(home)) {
+        for (const auto& dir : vs::compiler_dirs(vs)) dirs.push_back(dir);
+    }
 #elif defined(__APPLE__)
     dirs.push_back("/opt/homebrew/opt/llvm/bin");
     dirs.push_back("/usr/local/opt/llvm/bin");
@@ -215,10 +242,10 @@ std::vector<Found> list_compilers(const fs::path& home) {
         try {
             f.toolchain = probe_compiler(cxx, home);
             if (targets_msvc(*f.toolchain)) {
-                f.problem = std::format("targets the MSVC ABI ({}), which CPM supports from 0.4.8", f.toolchain->target);
-            } else if (major_of(f.toolchain->version) < minimum_major(f.toolchain->family)) {
+                f.problem = std::format("targets the MSVC ABI ({}); CPM uses Visual Studio's cl.exe for that", f.toolchain->target);
+            } else if (older_than_supported(*f.toolchain)) {
                 f.note = std::format("older than CPM supports ({} {} or newer); fine for projects that need less than C++23",
-                                     to_string(f.toolchain->family), minimum_major(f.toolchain->family));
+                                     to_string(f.toolchain->family), minimum_version(f.toolchain->family));
             }
         } catch (const Error& e) {
             std::string what = e.what();
@@ -227,6 +254,23 @@ std::vector<Found> list_compilers(const fs::path& home) {
         out.push_back(std::move(f));
     }
     return out;
+}
+
+std::string minimum_version(Family family) {
+    switch (family) {
+        case Family::Gcc: return "13";
+        case Family::AppleClang: return "15";
+        case Family::Msvc: return "19.40";
+        default: return "17";
+    }
+}
+
+bool older_than_supported(const Toolchain& tc) {
+    auto version = semver::Version::parse(tc.version);
+    std::string minimum = minimum_version(tc.family);
+    while (std::count(minimum.begin(), minimum.end(), '.') < 2) minimum += ".0";
+    auto oldest = semver::Version::parse(minimum);
+    return version && oldest && *version < *oldest;
 }
 
 const Found* best_match(const std::vector<Found>& found, const Request& request) {
@@ -265,8 +309,7 @@ Toolchain find_toolchain(const Selection& sel) {
         tc = requested_compiler({*sel.config_toolchain}, "config.jsonc", sel.home);
         tc.chosen_by = "from config.jsonc";
     } else {
-        tc = automatic(sel.home);
-        tc.chosen_by = "found on PATH";
+        tc = automatic(sel.home);  // says itself what chose it
     }
     // The command line and CXX win over the project, which may then get a compiler it didn't ask for (build.md §1.1).
     if (overrides_project && !sel.project.empty() && (sel.command || env::is_set("CXX"))) {

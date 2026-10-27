@@ -8,6 +8,7 @@
 #include "core/log.hpp"
 #include "core/paths.hpp"
 #include "core/proc.hpp"
+#include "toolchain/visual_studio.hpp"
 
 namespace cpm::build {
 
@@ -28,6 +29,7 @@ fs::path find_ninja(const std::optional<std::string>& configured, const fs::path
 #endif
     std::error_code ec;
     if (fs::is_regular_file(bundled, ec)) return bundled;
+    if (auto vs_ninja = toolchain::vs::bundled_ninja(home)) return *vs_ninja;
     throw Error("ninja not found", "install Ninja 1.10 or newer (https://ninja-build.org) and put it on PATH, "
                                    "or set CPM_NINJA to its path");
 }
@@ -40,8 +42,9 @@ std::vector<std::string> base_args(const NinjaRun& run) {
     return args;
 }
 
-std::vector<std::pair<std::string, std::string>> ninja_env() {
-    std::vector<std::pair<std::string, std::string>> env = {{"NINJA_STATUS", "[%f/%t] "}};
+std::vector<std::pair<std::string, std::string>> ninja_env(const NinjaRun& run) {
+    std::vector<std::pair<std::string, std::string>> env = run.env;
+    env.emplace_back("NINJA_STATUS", "[%f/%t] ");
     // Ninja decides on its own whether its output is a terminal; these make it follow CPM's choice.
     if (log::color()) env.emplace_back("CLICOLOR_FORCE", "1");
     else env.emplace_back("TERM", "dumb");
@@ -54,7 +57,7 @@ int run_ninja(const NinjaRun& run) {
     std::vector<std::string> args = base_args(run);
     if (run.verbose) args.push_back("-v");
     args.insert(args.end(), run.targets.begin(), run.targets.end());
-    proc::Command cmd{.argv = args, .cwd = run.root, .env_set = ninja_env()};
+    proc::Command cmd{.argv = args, .cwd = run.root, .env_set = ninja_env(run)};
     proc::RunOptions opt;
     opt.stdout_mode = proc::Stdout::ToStderr;
     opt.forward_interrupts = true;  // Ctrl-C stops Ninja, which reports it; CPM then cleans up
@@ -65,7 +68,9 @@ std::string dry_run(const NinjaRun& run) {
     std::vector<std::string> args = base_args(run);
     args.push_back("-n");
     args.insert(args.end(), run.targets.begin(), run.targets.end());
-    proc::Command cmd{.argv = args, .cwd = run.root, .env_set = {{"NINJA_STATUS", "[%f/%t] "}, {"TERM", "dumb"}}};
+    proc::Command cmd{.argv = args, .cwd = run.root, .env_set = run.env};
+    cmd.env_set.emplace_back("NINJA_STATUS", "[%f/%t] ");
+    cmd.env_set.emplace_back("TERM", "dumb");
     proc::Captured r = proc::capture(cmd);
     if (r.exit_code != 0) throw Error(std::format("ninja -n failed:\n{}{}", r.out, r.err));
     return r.out;

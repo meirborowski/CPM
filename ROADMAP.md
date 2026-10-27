@@ -108,19 +108,26 @@ Done when cpm-json, cpm-log, cpm-args and cpm-bench are published on cpm-registr
 
 ## 0.4.8: MSVC, part 1
 
-Visual Studio's compiler, `cl.exe`, as one more toolchain.
+Visual Studio's compiler, `cl.exe`, as one more toolchain ([build.md §1.4–§3](docs/spec/build.md#14-finding-compilers)).
 
-- Find Visual Studio and its Build Tools with `vswhere`, and set up their environment without a Developer Command Prompt.
-- An MSVC driver: profile flags, warnings, defines, include paths and C++ standards mapped to `cl.exe`. Static libraries are built with `lib.exe` and programs linked with `link.exe`. `cpm test` works.
-- ABI fingerprints cover the toolset version and the runtime library (`/MD` or `/MT`).
-- `cpm toolchain list` shows MSVC, and `"toolchain": "msvc"` selects it.
+- **Finding it:** CPM finds Visual Studio and its Build Tools with `vswhere`, and sets up their environment without a Developer Command Prompt. `vcvarsall.bat` runs once per toolset, and CPM caches the environment it sets.
+- **The driver:** profile flags, warnings, defines, include paths, and the C++ and C standards, mapped to `cl.exe`. Header dependencies come from `/showIncludes`. Static libraries are built with `lib.exe` and programs linked with `link.exe`. `cpm test` and `cpm run` work.
+- **Dependencies:** registry and git dependencies build with MSVC in the sandbox, as they do with GCC. This comes from part 2, because CPM's own tests use cpm-test from the registry.
+- **Fingerprints:** ABI fingerprints cover:
+  - the compiler's exact version, which changes with each toolset update;
+  - the version of MSVC's standard library;
+  - the runtime library (`/MD`, `/MT` and their debug forms).
+- **Choosing it:**
+  - `cpm toolchain list` shows MSVC, and `"toolchain": "msvc"` selects it.
+  - A Windows machine with only Visual Studio builds without `cpm setup`: MSVC is chosen when there is no GCC or Clang, and Visual Studio's own Ninja is used.
+- **Shared libraries** stay with MinGW until part 2. With MSVC they are a clear error.
+- **Bootstrap:** CPM's stage 0 bootstrap can be built with `cl.exe`.
 
-Done when CPM's own tests pass when CPM is built with MSVC, and CI runs a Windows MSVC job.
+Done when CPM built with MSVC passes its own tests, and CI runs a Windows MSVC job that self-hosts CPM with it.
 
 ## 0.4.9: MSVC, part 2
 
 - Shared libraries: symbol exports (`__declspec(dllexport)` through a generated export macro), import libraries, and DLLs found at run time.
-- Dependencies from the registry build with MSVC, and C sources compile with `cl.exe`.
 - `cpm setup` on Windows can install Visual Studio Build Tools (through winget, after asking), as an alternative to WinLibs GCC.
 
 Done when the cpm-org libraries install and pass their tests with MSVC.

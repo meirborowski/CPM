@@ -39,7 +39,7 @@ CPM is a single executable. Source lives in `src/<module>/`, namespace `cpm::<mo
 | `publish/` | `publish` | `cpm publish`: file selection, the checks before packing, deterministic source archives, adding a version to a registry index ([registry.md §6](registry.md#6-publishing)). |
 | `setup/` | `setup` | `cpm setup`: checks the compiler, Ninja and helpers the way a build would; reads `toolchains.json` ([registry.md §8.2](registry.md#82-toolchainsjson)); verifies and unpacks pinned tools into `$CPM_HOME/tools`; chooses and runs the Linux package manager; points `config.jsonc` at the result. The parts that decide what to install are pure functions with their own tests. |
 | `build/` | `layout`, `plan`, `ninja_writer`, `ninja_gen`, `runner`, `dep_builder`, `tests` | Convention inference, `BuildPlan` construction, Ninja syntax and escaping, `build.ninja` generation, Ninja invocation, sandboxed dependency builds, test discovery and execution. |
-| `toolchain/` | `probe`, `select`, `driver`, `gcc_driver`, `msvc_driver` (*post-MVP*), `abi` | Cached probing; `select` finds the compilers on a machine and chooses one from the command line, `CXX`, the project and the machine's configuration (build.md §1.1); the `Driver` interface that maps profiles to flags and rules, ABI fingerprinting. |
+| `toolchain/` | `probe`, `select`, `visual_studio`, `driver`, `gcc_driver`, `msvc_driver`, `abi` | Cached probing; `select` finds the compilers on a machine and chooses one from the command line, `CXX`, the project and the machine's configuration (build.md §1.1); `visual_studio` finds installations through `vswhere` and captures a toolset's environment (build.md §1.4, §1.5); the `Driver` interface that maps profiles to flags and rules, ABI fingerprinting. |
 | `manifest/` | `manifest`, `dep_spec`, `profile`, `validate` | `cpm.jsonc` model, overlays, profile defaults and inheritance, validation with `file:line:col` diagnostics. |
 | `lock/` | `lockfile` | `cpm-lock.json` model, deterministic read and write, freshness check. |
 | `json/` | `value`, `parse`, `write`, `edit` | Order-preserving JSON value with source spans, JSONC parser, deterministic writer, surgical comment-preserving text edits. |
@@ -178,7 +178,7 @@ struct Toolchain {
     std::string version;                                   // "13.2.0"
     std::string target;                                    // "x86_64-w64-mingw32"
     Os os; std::string arch, stdlib, stdlib_abi, crt, eh, threads;
-    std::map<std::string, std::string> env;                // extra environment (MSVC vcvars, post-MVP)
+    std::map<std::string, std::string> env;                // MSVC: INCLUDE, LIB, LIBPATH and PATH (build.md §1.5)
 };
 
 struct NinjaRule { std::string name, command, description, depfile, deps, rspfile, rspfile_content; };

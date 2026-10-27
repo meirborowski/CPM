@@ -69,7 +69,7 @@
       "description": "C standard for this package's .c files; every package uses its own. Default: gnu17 (docs/spec/manifest.md §3.3).",
       "enum": ["c89", "c99", "c11", "c17", "c23", "gnu89", "gnu99", "gnu11", "gnu17", "gnu23"]
     },
-    "toolchainRequest": { "type": "string", "pattern": "^\\s*(gcc|clang|apple-clang)(\\s+\\S.*)?$" },
+    "toolchainRequest": { "type": "string", "pattern": "^\\s*(gcc|clang|apple-clang|msvc)(\\s+\\S.*)?$" },
     "targetType": { "enum": ["executable", "static-lib", "shared-lib", "header-only"] },
     "globList": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "defineList": {

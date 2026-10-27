@@ -10,6 +10,7 @@
 #include "core/paths.hpp"
 #include "json/parse.hpp"
 #include "json/write.hpp"
+#include "toolchain/visual_studio.hpp"
 
 namespace cpm::toolchain {
 
@@ -77,6 +78,14 @@ json::Value load_cache(const fs::path& home) {
     return v;
 }
 
+void save_cache(const json::Value& cache, const fs::path& home) {
+    try {
+        fsx::write_file_atomic(cache_file(home), json::write(cache, {.sort_keys = true}) + "\n");
+    } catch (const Error& e) {
+        log::verbose(std::format("could not update the toolchain cache: {}", e.what()));
+    }
+}
+
 json::Value flags_json(const std::map<std::string, std::string>& flags) {
     json::Value out = json::Value::object();
     for (const auto& [k, v] : flags) out.set(k, v);
@@ -107,6 +116,17 @@ json::Value to_json(const Toolchain& tc) {
     in.set("stdlib.abi", tc.stdlib_abi);
     in.set("threads", tc.threads);
     e.set("inputs", std::move(in));
+    if (tc.visual_studio) {
+        e.set("linker", paths::to_utf8(tc.linker));
+        json::Value vs = json::Value::object();
+        vs.set("path", paths::to_utf8(tc.visual_studio->path));
+        vs.set("name", tc.visual_studio->name);
+        vs.set("version", tc.visual_studio->version);
+        vs.set("toolset", tc.visual_studio->toolset);
+        e.set("vs", std::move(vs));
+        e.set("env", flags_json(tc.env));
+        e.set("depsPrefix", tc.deps_prefix);
+    }
     if (tc.c) {
         json::Value c = json::Value::object();
         c.set("path", paths::to_utf8(tc.c->path));
@@ -151,6 +171,15 @@ std::optional<Toolchain> from_json(const json::Value& e, const fs::path& cxx) {
         if (const json::Value* c = e.find("c")) tc.c = c_compiler_from_json(*c);
         std::error_code ec;
         if (!fs::is_regular_file(tc.ar, ec)) return std::nullopt;
+        if (const json::Value* vs = e.find("vs")) {
+            tc.visual_studio = VisualStudio{paths::from_utf8(vs->at("path").as_string()), vs->at("name").as_string(),
+                                            vs->at("version").as_string(), vs->at("toolset").as_string()};
+            tc.linker = paths::from_utf8(e.at("linker").as_string());
+            tc.env = flags_from_json(e.at("env"));
+            tc.deps_prefix = e.at("depsPrefix").as_string();
+            // A Windows SDK uninstalled since: capture the environment again (build.md §1.5).
+            if (!fs::is_regular_file(tc.linker, ec) || !vs::environment_intact(tc.env)) return std::nullopt;
+        }
         return tc;
     } catch (const std::exception&) {
         return std::nullopt;  // malformed entry: probe again
@@ -169,11 +198,19 @@ std::optional<Toolchain> cached_toolchain(const fs::path& cxx, const fs::path& h
 void cache_toolchain(const Toolchain& tc, const fs::path& home) {
     json::Value cache = load_cache(home);
     cache.find("toolchains")->set(paths::to_utf8(tc.cxx), to_json(tc));
-    try {
-        fsx::write_file_atomic(cache_file(home), json::write(cache, {.sort_keys = true}) + "\n");
-    } catch (const Error& e) {
-        log::verbose(std::format("could not update the toolchain cache: {}", e.what()));
-    }
+    save_cache(cache, home);
+}
+
+std::optional<json::Value> cached_section(std::string_view key, const fs::path& home) {
+    json::Value cache = load_cache(home);
+    if (const json::Value* section = cache.find(key)) return *section;
+    return std::nullopt;
+}
+
+void cache_section(std::string_view key, json::Value value, const fs::path& home) {
+    json::Value cache = load_cache(home);
+    cache.set(std::string(key), std::move(value));
+    save_cache(cache, home);
 }
 
 }  // namespace cpm::toolchain

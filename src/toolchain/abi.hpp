@@ -20,7 +20,7 @@ struct AbiFingerprint {
 };
 
 // `defines`: the root package's definitions (profile, manifest and platform); only the ABI-affecting
-// ones (abi.md §2) are used. `cxxflags`: raw flags, checked for -fno-exceptions / -fno-rtti.
+// ones (abi.md §2) are used. `cxxflags`: raw flags, checked for -fno-exceptions / -fno-rtti (MSVC: /EHs-c- / /GR-).
 AbiFingerprint fingerprint(const Toolchain& tc, const Driver& driver, const manifest::Profile& profile,
                            const std::string& std, const std::vector<std::string>& defines,
                            const std::vector<std::string>& cxxflags);

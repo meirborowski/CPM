@@ -54,7 +54,7 @@ The script puts `cpm` in `~/.cpm/bin` after checking its SHA-256 against the rel
 
 | Platform | What `cpm setup` installs when it's missing |
 |---|---|
-| Windows | [WinLibs](https://winlibs.com) GCC (MinGW-w64, UCRT) and [Ninja](https://ninja-build.org), into `~/.cpm/tools`. Nothing outside your user folder changes. |
+| Windows | [WinLibs](https://winlibs.com) GCC (MinGW-w64, UCRT) and [Ninja](https://ninja-build.org), into `~/.cpm/tools`. Nothing outside your user folder changes. A machine with Visual Studio's C++ tools needs neither: CPM uses MSVC and the Ninja that comes with Visual Studio. |
 | Linux | `g++` and `ninja-build` from your distribution, with `sudo`: apt, dnf, pacman, zypper or apk |
 | macOS | Apple's Command Line Tools (Clang), plus Ninja into `~/.cpm/tools` |
 
@@ -215,14 +215,14 @@ flowchart LR
 | Setting | Where |
 |---|---|
 | Registries, compiler, Ninja path, colours | `~/.cpm/config.jsonc` (`%USERPROFILE%\.cpm\config.jsonc` on Windows) |
-| Choose the compiler | `cpm toolchain use clang` for this machine, `"toolchain": "gcc >=14"` in `cpm.jsonc` for a project, or `--toolchain clang` for one command ([build.md §1.1](docs/spec/build.md#11-selection-order)) |
+| Choose the compiler | `cpm toolchain use clang` for this machine, `"toolchain": "gcc >=14"` in `cpm.jsonc` for a project, or `--toolchain msvc` for one command ([build.md §1.1](docs/spec/build.md#11-selection-order)) |
 | Install another compiler | `cpm setup --compiler gcc` or `cpm setup --compiler clang` |
 | Move CPM's home (store, caches, sign-in) | `CPM_HOME` |
 | Profiles, defines, per-platform settings | `cpm.jsonc` ([manifest reference](docs/spec/manifest.md)) |
 
 ## Status
 
-CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (MinGW-w64 GCC), Linux (GCC and Clang) and macOS (Apple Clang), and the one-line installers are tested on fresh machines weekly and after each release.
+CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (MinGW-w64 GCC and MSVC), Linux (GCC and Clang) and macOS (Apple Clang), and the one-line installers are tested on fresh machines weekly and after each release.
 
 **Works today:**
 - executables, plus static, shared and header-only libraries, in C++11 to C++26;
@@ -232,10 +232,11 @@ CPM is young, at **v0.4**, and moving fast. Every change is tested on Windows (M
 - publishing, searching the registry, and finding outdated dependencies;
 - inspecting packages and dependency graphs (`cpm info`, `cpm tree`, `cpm why`), and cleaning the store (`cpm cache`);
 - version conflicts explained step by step, by a PubGrub resolver, and version overrides for when a dependency's range is too strict;
+- GCC, Clang, Apple Clang and Visual Studio's MSVC, which needs no Developer Command Prompt;
 - choosing the compiler per machine, project or command, with `cpm toolchain list` showing every compiler CPM finds;
 - a one-command install that also sets up a compiler and Ninja.
 
-**Next, on the [road to 0.5.0](ROADMAP.md):** MSVC, symbol isolation, workspaces and prebuilt binaries from the registry, in small releases from 0.4.8.
+**Next, on the [road to 0.5.0](ROADMAP.md):** shared libraries with MSVC, symbol isolation, workspaces and prebuilt binaries from the registry, in small releases from 0.4.9.
 
 ## Documentation
 

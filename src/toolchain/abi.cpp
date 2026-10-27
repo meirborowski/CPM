@@ -6,6 +6,7 @@
 #include "core/error.hpp"
 #include "core/sha256.hpp"
 #include "core/strings.hpp"
+#include "toolchain/msvc.hpp"
 
 namespace cpm::toolchain {
 
@@ -49,7 +50,8 @@ AbiFingerprint fingerprint(const Toolchain& tc, const Driver& driver, const mani
     add("arch", tc.arch);
     add("target", tc.target);
     add("compiler", std::string(to_string(tc.family)));
-    add("compiler.version", tc.version);
+    // MSVC: _MSC_FULL_VER, which changes with every toolset update (abi.md §1).
+    add("compiler.version", tc.family == Family::Msvc ? msvc::full_version(tc.version) : tc.version);
     add("stdlib", tc.stdlib);
     add("stdlib.abi", tc.stdlib_abi);
     add("crt", tc.crt);
@@ -61,8 +63,8 @@ AbiFingerprint fingerprint(const Toolchain& tc, const Driver& driver, const mani
     add("pic", tc.os == Os::Windows ? "false" : "true");
     add("sanitizers", str::join(sanitizers, ","));
     add("defines.abi", str::join(abi_defines, ","));
-    add("exceptions", has_flag("-fno-exceptions") ? "off" : "on");
-    add("rtti", has_flag("-fno-rtti") ? "off" : "on");
+    add("exceptions", has_flag("-fno-exceptions") || has_flag("/EHs-c-") ? "off" : "on");
+    add("rtti", has_flag("-fno-rtti") || has_flag("/GR-") ? "off" : "on");
 
     std::sort(fp.inputs.begin(), fp.inputs.end());
     fp.hash = Sha256::hex(fp.canonical());

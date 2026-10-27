@@ -31,7 +31,7 @@ A *choice* is one of two things:
 
 The resolved absolute path identifies the toolchain from then on.
 
-- **What chose it.** Every build says which compiler it uses and what chose it: `Compiling hello v0.1.0 (debug, gcc 14.2.0, from cpm.jsonc)`. The sources read `from --toolchain`, `from --cxx`, `from CXX`, `from cpm.jsonc`, `from config.jsonc` and `found on PATH`. With `-v` the line also gives the compiler's path.
+- **What chose it.** Every build says which compiler it uses and what chose it: `Compiling hello v0.1.0 (debug, gcc 14.2.0, from cpm.jsonc)`. The sources read `from --toolchain`, `from --cxx`, `from CXX`, `from cpm.jsonc`, `from config.jsonc`, `found on PATH` and `found in Visual Studio`. With `-v` the line also gives the compiler's path.
 - **Disagreements.** When the command or `CXX` chooses a compiler that the project's `"toolchain"` doesn't accept, CPM warns and uses the chosen compiler, so a project can still be tried with other compilers.
 - **Nothing matches.** A request that no compiler on the machine meets is an error. It names the request and what made it, lists the compilers CPM found, and says how to get one: `cpm setup --compiler gcc` or `cpm setup --compiler clang` where `cpm setup` can install it ([cli.md](cli.md#cpm-setup)).
 - A Clang that targets the MSVC ABI (`clang-cl`, or a `clang++` for `*-windows-msvc`), named explicitly, is an error with a hint to use `--toolchain msvc` or a MinGW toolchain.
@@ -139,7 +139,7 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + `<name>.lib` (0.4.9; until then a shared library is an error with MSVC) |
 | Library search | `-L<dir> -l<name>` | `/LIBPATH:<dir> <name>.lib` |
 | Response files | `@file` | `@file` |
-| Archive and link | `gcc-ar`/`llvm-ar` `rcs`; the C++ compiler links | `lib /nologo /OUT:$out @$out.rsp`; `link /nologo /OUT:$out /INCREMENTAL:NO @$out.rsp` |
+| Archive and link | `gcc-ar`/`llvm-ar` `rcs`; the C++ compiler links | `lib /nologo /OUT:$out @$out.rsp`; `link /nologo /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /OUT:$out @$out.rsp`. `/SUBSYSTEM:CONSOLE` lets `main()` come from a library, as cpm-test's does |
 | Environment | inherited | captured from `vcvarsall.bat` (§1.5) |
 
 ## 3. Profile to flag mapping
@@ -151,7 +151,7 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | `opt` `0` / `1` / `2` / `3` / `s` / `z` | `-O0` / `-O1` / `-O2` / `-O3` / `-Os` / `-Oz` | `/Od` / `/O2` / `/O2` / `/O2` / `/O1` / `/O1` |
 | `debug: true` | `-g` | compile `/Z7`, link `/DEBUG` |
 | `assertions: false` | `-DNDEBUG` | `/DNDEBUG` |
-| `lto: true` | compile and link `-flto` (`-flto=auto` on GCC); archiver `gcc-ar`/`llvm-ar` | compile `/GL`, link and `lib` `/LTCG` |
+| `lto: true` | compile and link `-flto` (`-flto=auto` on GCC); archiver `gcc-ar`/`llvm-ar` | compile `/GL`, link `/LTCG` |
 | `sanitizers` | compile and link `-fsanitize=<list> -fno-omit-frame-pointer` | `address` → `/fsanitize=address`, whose runtime DLL is found through the environment of §1.5; others warn and are dropped |
 | `runtime: static` | link: Linux/macOS `-static-libstdc++ -static-libgcc`; MinGW `-static` | `/MT` instead of `/MD` |
 | `debugRuntime: true` | — | `/MDd` or `/MTd` |
@@ -160,7 +160,7 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, plus `-Wnon-virtual-dtor -Woverloaded-virtual` for C++ | `/W4`, plus the warnings that `/W4` leaves off and GCC's set has: conversions that lose data or change sign (`/w14242 /w14254 /w14365 /w14826`), a class with virtual functions and a non-virtual destructor (`/w14265`), a virtual function hidden by an overload (`/w14263`), and suspicious comparisons and casts (`/w14287 /w14296 /w14905 /w14906 /w14928`) |
 | `werror: true` | `-Werror` | `/WX` |
 | PIC (dependency builds, shared libraries; not on Windows) | `-fPIC` | — |
-| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /utf-8 /Zc:preprocessor /bigobj`, and for C++ `/EHsc /Zc:__cplusplus /permissive-`. MSVC has no colour flag. Links always get `/INCREMENTAL:NO` |
+| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /utf-8 /Zc:preprocessor /bigobj`, and for C++ `/EHsc /Zc:__cplusplus /permissive-`. MSVC has no colour flag |
 | `cflags` / `cxxflags` / `ldflags` | appended last, verbatim: `cflags` to C compiles, `cxxflags` to C++ compiles | appended last, verbatim |
 
 The rest of a profile applies to C as it does to C++: `opt`, `debug`, `assertions`, `lto`, `sanitizers`, `warnings`, `werror`, `defines`, PIC and the colour flag. C and C++ translation units also get the same include directories and definitions (§4.3).

@@ -15,14 +15,14 @@ public:
 
     std::vector<NinjaRule> rules() const override {
         // macOS's BSD ar has no @file response files; its command lines may be long enough (ARG_MAX ~1 MB).
-        NinjaRule ar = tc_.os == Os::MacOS ? NinjaRule{"ar", "$ar rcs $out $in", "AR $out", "", "", "", ""}
-                                           : NinjaRule{"ar", "$ar rcs $out @$out.rsp", "AR $out", "", "", "$out.rsp", "$in"};
+        NinjaRule ar = tc_.os == Os::MacOS ? NinjaRule{"ar", "$ar rcs $out $in", "AR $out", "", "", "", "", ""}
+                                           : NinjaRule{"ar", "$ar rcs $out @$out.rsp", "AR $out", "", "", "$out.rsp", "$in", ""};
         return {
-            {"cxx", "$cxx -MD -MF $out.d $cxxflags $defines $incs -c $in -o $out", "CXX $in", "$out.d", "gcc", "", ""},
-            {"cc", "$cc -MD -MF $out.d $cflags $defines $incs -c $in -o $out", "CC $in", "$out.d", "gcc", "", ""},
+            {"cxx", "$cxx -MD -MF $out.d $cxxflags $defines $incs -c $in -o $out", "CXX $in", "$out.d", "gcc", "", "", ""},
+            {"cc", "$cc -MD -MF $out.d $cflags $defines $incs -c $in -o $out", "CC $in", "$out.d", "gcc", "", "", ""},
             ar,
-            {"link", "$cxx @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
-            {"link_shared", "$cxx -shared @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs"},
+            {"link", "$cxx @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs", ""},
+            {"link_shared", "$cxx -shared @$out.rsp -o $out $ldflags", "LINK $out", "", "", "$out.rsp", "$in $libs", ""},
         };
     }
 
@@ -135,15 +135,6 @@ private:
 
 }  // namespace
 
-std::unique_ptr<Driver> make_driver(const Toolchain& tc) {
-    switch (tc.family) {
-        case Family::Gcc:
-        case Family::Clang:
-        case Family::AppleClang: return std::make_unique<GccDriver>(tc);
-        case Family::Msvc:
-        case Family::ClangCl: break;
-    }
-    throw Error(std::format("no driver for {} yet", to_string(tc.family)), "use g++ or clang++");
-}
+std::unique_ptr<Driver> make_gcc_driver(const Toolchain& tc) { return std::make_unique<GccDriver>(tc); }
 
 }  // namespace cpm::toolchain

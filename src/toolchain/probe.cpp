@@ -9,6 +9,7 @@
 #include "core/paths.hpp"
 #include "core/proc.hpp"
 #include "core/strings.hpp"
+#include "toolchain/msvc.hpp"
 #include "toolchain/probe_cache.hpp"
 
 namespace cpm::toolchain {
@@ -153,7 +154,7 @@ Toolchain toolchain_from_probe(const ProbeOutput& p, const fs::path& cxx) {
 }
 
 bool targets_msvc(const Toolchain& tc) {
-    return tc.os == Os::Windows && tc.target.find("-msvc") != std::string::npos;
+    return tc.family != Family::Msvc && tc.os == Os::Windows && tc.target.find("-msvc") != std::string::npos;
 }
 
 ProbeOutput run_probe(const fs::path& compiler, Language language, const fs::path& home) {
@@ -185,13 +186,19 @@ Toolchain probe_compiler(const fs::path& cxx, const fs::path& home) {
     }
 
     log::verbose(std::format("probing {}", paths::to_utf8(cxx)));
-    Toolchain tc = toolchain_from_probe(run_probe(cxx, Language::Cxx, home), cxx);
-    tc.ar = find_archiver(tc);
+    Toolchain tc;
+    if (msvc::is_cl(cxx)) {
+        tc = msvc::probe(cxx, home);
+    } else {
+        tc = toolchain_from_probe(run_probe(cxx, Language::Cxx, home), cxx);
+        tc.ar = find_archiver(tc);
+    }
     cache_toolchain(tc, home);
     return tc;
 }
 
 std::string std_flag(Toolchain& tc, const std::string& std, const fs::path& home) {
+    if (tc.family == Family::Msvc) return msvc::std_flag(tc, std, home);
     if (auto it = tc.std_flags.find(std); it != tc.std_flags.end()) return it->second;
 
     static const std::map<std::string, std::string> provisional = {

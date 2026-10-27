@@ -12,7 +12,8 @@
 
 namespace cpm::toolchain {
 
-// A Ninja rule. Commands may use $cxx, $cc, $ar, $cxxflags, $cflags, $defines, $incs, $ldflags and $libs.
+// A Ninja rule. Commands may use $cxx, $cc, $ar, $linker (MSVC), $cxxflags, $cflags, $defines, $incs, $ldflags and
+// $libs.
 struct NinjaRule {
     std::string name;
     std::string command;
@@ -21,6 +22,7 @@ struct NinjaRule {
     std::string deps;
     std::string rspfile;
     std::string rspfile_content;
+    std::string msvc_deps_prefix;  // deps = msvc: what starts /showIncludes lines (build.md §1.3)
 };
 
 struct ProfileFlags {
@@ -60,5 +62,9 @@ public:
 };
 
 std::unique_ptr<Driver> make_driver(const Toolchain& tc);
+
+// The drivers make_driver chooses from.
+std::unique_ptr<Driver> make_gcc_driver(const Toolchain& tc);   // GCC and Clang, MinGW and Apple Clang included
+std::unique_ptr<Driver> make_msvc_driver(const Toolchain& tc);  // Visual Studio's cl.exe
 
 }  // namespace cpm::toolchain

@@ -37,9 +37,9 @@ int run_tests(const BuildResult& build, const TestOptions& options) {
     constexpr char path_sep = ':';
 #endif
     // A shared library built by this package lives in build/<profile>/, and the compiler's runtime DLLs next to
-    // the compiler; Windows finds DLLs through PATH, so both go in front.
+    // the compiler (MSVC: in the directories vcvarsall.bat adds); Windows finds DLLs through PATH, so both go in front.
     std::string path = paths::to_native_utf8(out_dir);
-    if (plan.toolchain.os == Os::Windows) path += path_sep + paths::to_native_utf8(plan.toolchain.cxx.parent_path());
+    for (const auto& dir : toolchain::runtime_dirs(plan.toolchain)) path += path_sep + paths::to_native_utf8(dir);
     if (auto existing = env::get("PATH"); existing && !existing->empty()) path += path_sep + *existing;
 
     std::size_t passed = 0, failed = 0, skipped = 0;

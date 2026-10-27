@@ -199,6 +199,7 @@ BuildResult run_build(const BuildRequest& req, const manifest::UserConfig& confi
     run.targets = targets;
     run.jobs = req.jobs;
     run.verbose = log::verbose();
+    run.env = toolchain::process_environment(tc);
     lap("ninja found");
 
     std::error_code ec;

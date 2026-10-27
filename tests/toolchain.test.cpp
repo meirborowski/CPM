@@ -87,6 +87,7 @@ TEST(finds_compilers_by_name_once_each) {
         fixture::write(t.path() / "bin" / exe(name), "");
     }
     fixture::write(t.path() / "other" / exe("g++-13"), "");
+    fixture::write(t.path() / "other" / exe("cl"), "");  // MSVC, by that name on Windows only
     fs::create_directories(t.path() / "bin" / exe("clang++-19"));  // a directory, not a program
     auto names = [](const std::vector<fs::path>& found) {
         std::vector<std::string> out;
@@ -94,9 +95,14 @@ TEST(finds_compilers_by_name_once_each) {
         return out;
     };
     // clang++ before g++, unversioned before versioned; a directory listed twice counts once.
+    std::vector<std::string> expected = {"bin/" + exe("clang++"), "bin/" + exe("clang++-18"), "bin/" + exe("g++"),
+                                         "bin/" + exe("g++-14")};
+#ifdef _WIN32
+    expected.push_back("other/" + exe("cl"));
+#endif
+    expected.push_back("other/" + exe("g++-13"));
     CHECK_EQ(names(toolchain::find_compilers({t.path() / "bin", t.path() / "other", t.path() / "bin", t.path() / "missing"})),
-             (std::vector<std::string>{"bin/" + exe("clang++"), "bin/" + exe("clang++-18"), "bin/" + exe("g++"), "bin/" + exe("g++-14"),
-                                       "other/" + exe("g++-13")}));
+             expected);
 }
 
 TEST(requests_pick_the_newest_usable_match) {
@@ -123,7 +129,7 @@ TEST(projects_and_machines_state_their_choice) {
         return manifest::parse(R"({ "name": "app", "version": "1.0.0", "toolchain": )" + toolchain + " }", "cpm.jsonc", "cpm.jsonc");
     };
     CHECK_EQ(parse(R"("gcc >=14")").toolchain, (std::vector<std::string>{"gcc >=14"}));
-    CHECK_EQ(parse(R"(["gcc >=14", "clang 18", "apple-clang"])").toolchain.size(), 3u);
+    CHECK_EQ(parse(R"(["gcc >=14", "clang 18", "apple-clang", "msvc >=19.44"])").toolchain.size(), 4u);
     CHECK_THROWS(parse(R"("g++-14")"), "is not a compiler request");  // paths and names differ between machines
     CHECK_THROWS(parse(R"("clang >=banana")"), "invalid compiler version range");
     CHECK_THROWS(parse(R"([])"), "at least one");
@@ -191,6 +197,8 @@ TEST(builds_with_each_compiler_family_the_machine_has) {
     std::vector<std::string> families;
 #ifdef __APPLE__
     const std::vector<const char*> wanted = {"apple-clang"};  // Homebrew's GCC and LLVM vary too much between machines
+#elif defined(_WIN32)
+    const std::vector<const char*> wanted = {"gcc", "clang", "msvc"};
 #else
     const std::vector<const char*> wanted = {"gcc", "clang"};
 #endif
@@ -207,7 +215,8 @@ TEST(builds_with_each_compiler_family_the_machine_has) {
     fs::path app = t.path() / "app";
     fixture::write(app / "cpm.jsonc", R"({ "name": "app", "version": "1.0.0", "std": "c++17" })");
     fixture::write(app / "src" / "main.cpp",
-                   "#include <cstdio>\nint main() {\n#ifdef __clang__\n  std::puts(\"clang\");\n#else\n  std::puts(\"gcc\");\n#endif\n}\n");
+                   "#include <cstdio>\nint main() {\n#if defined(_MSC_VER) && !defined(__clang__)\n  std::puts(\"msvc\");\n"
+                   "#elif defined(__clang__)\n  std::puts(\"clang\");\n#else\n  std::puts(\"gcc\");\n#endif\n}\n");
     std::set<std::string> abis;
     for (const auto& family : families) {
         build::BuildRequest req;
@@ -217,7 +226,7 @@ TEST(builds_with_each_compiler_family_the_machine_has) {
         CHECK_EQ(built.exit_code, 0);
         CHECK_EQ(built.plan.toolchain.chosen_by, "from --toolchain");
         auto out = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.main_output)}});
-        CHECK(out.out.starts_with(family == "gcc" ? "gcc" : "clang"));
+        CHECK(out.out.starts_with(family));
         abis.insert(build::load_project(app, "debug", req.toolchain, manifest::UserConfig{}).abi.dir());
     }
     CHECK_EQ(abis.size(), families.size());  // each compiler builds for its own ABI

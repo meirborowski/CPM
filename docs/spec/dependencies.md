@@ -211,7 +211,7 @@ When the project knows that a dependency works with a version the dependency's r
 - By default a diamond that needs two incompatible versions of one package is a **resolution error** (§4.3). CPM never links two versions of the same package into one binary on its own.
 - **Escape hatch (*post-MVP*):** `"isolate": true` on a dependency's object form lets that dependency keep a private copy of its own static-library dependencies:
   1. The isolated package and its private dependencies are resolved as a separate sub-graph. They are exempt from the flat rule for the names involved.
-  2. All of them are compiled with `-fvisibility=hidden -fvisibility-inlines-hidden`. The isolated package's own exported API is marked visible through its public headers (`CPM_API`, emitted into a generated `cpm_export.hpp`).
+  2. All of them are compiled with `-fvisibility=hidden -fvisibility-inlines-hidden`. The isolated package's own exported API is marked visible through its public headers, with its `<NAME>_API` ([manifest.md §4.1](manifest.md#41-exported-symbols-name_api)).
   3. The objects are combined with `ld -r` into one relocatable object, and `objcopy --localize-hidden` is applied. The result is packaged as `lib<name>.a`, so private symbols cannot collide in the final link.
   4. Isolation is refused when the isolated package's public headers include headers of a private dependency. Types from a private dependency would then cross the boundary and violate the ODR again. CPM checks this by scanning the include graph of the public headers.
   5. On MSVC, isolation requires building the isolated package as a DLL (*later*).

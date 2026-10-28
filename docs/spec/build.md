@@ -121,8 +121,8 @@ An entry is reused while the compiler file's size and mtime are unchanged. `stdF
 `cl.exe` and `link.exe` find the C++ library, the Windows SDK and the C runtime through the environment variables `INCLUDE`, `LIB` and `LIBPATH`, and they need some directories on `PATH`. A Developer Command Prompt sets these by running `vcvarsall.bat`. CPM doesn't need one:
 
 - **Capture.** For each MSVC toolset it uses, CPM runs once: `cmd /d /c "call "<vs>/VC/Auxiliary/Build/vcvarsall.bat" <arch> -vcvars_ver=<toolset> >nul 2>nul && set"`, which takes a few seconds. `<arch>` is `x64`, or `arm64` on ARM64 Windows.
-- **Cache.** It keeps `INCLUDE`, `LIB`, `LIBPATH`, and the directories `vcvarsall.bat` put in front of `PATH`, in the probe cache (§1.3).
-- **Use.** That environment is used for the compiler's probes, Ninja (§6), dependency builds (§5), `cpm test` (§7) and `cpm run`. `INCLUDE`, `LIB` and `LIBPATH` replace the inherited values, and the `PATH` directories go in front of the inherited `PATH`.
+- **Cache.** It keeps `INCLUDE`, `LIB`, `LIBPATH`, `EXTERNAL_INCLUDE`, and the directories `vcvarsall.bat` put in front of `PATH`, in the probe cache (§1.3). `EXTERNAL_INCLUDE` names the toolchain's own headers (the standard library and the Windows SDK), which are then *external*: with `/external:W0` (§3) no warning comes from them, as GCC and Clang report none from system headers.
+- **Use.** That environment is used for the compiler's probes, Ninja (§6), dependency builds (§5), `cpm test` (§7) and `cpm run`. `INCLUDE`, `LIB`, `LIBPATH` and `EXTERNAL_INCLUDE` replace the inherited values, and the `PATH` directories go in front of the inherited `PATH`. An environment cached before CPM 0.4.9, without `EXTERNAL_INCLUDE`, is captured again.
 - **Refresh.** It is captured again when `cl.exe` changes (its stamp), or when one of its `INCLUDE` or `LIB` directories no longer exists, as after a Windows SDK is uninstalled.
 - **Developer Command Prompt.** There, CPM still uses its own captured environment for the toolset it chose, so a build never depends on which prompt started it.
 
@@ -136,7 +136,7 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | Object extension | `.o` | `.obj` |
 | Executable | `<name>` / `<name>.exe` | `<name>.exe` |
 | Static library | `lib<name>.a` (including MinGW) | `<name>.lib` |
-| Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + `<name>.lib` (0.4.9; until then a shared library is an error with MSVC) |
+| Shared library | `lib<name>.so`, `lib<name>.dylib`, MinGW: `lib<name>.dll` + import library `lib<name>.dll.a` | `<name>.dll` + import library `<name>.lib`: `link /nologo /INCREMENTAL:NO /DLL /IMPLIB:<name>.lib /OUT:$out @$out.rsp` |
 | Library search | `-L<dir> -l<name>` | `/LIBPATH:<dir> <name>.lib` |
 | Response files | `@file` | `@file` |
 | Archive and link | `gcc-ar`/`llvm-ar` `rcs`; the C++ compiler links | `lib /nologo /OUT:$out @$out.rsp`; `link /nologo /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /OUT:$out @$out.rsp`. `/SUBSYSTEM:CONSOLE` lets `main()` come from a library, as cpm-test's does |
@@ -160,7 +160,7 @@ A **driver** turns the abstract plan into concrete command lines for one compile
 | `warnings: strict` | `-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion`, plus `-Wnon-virtual-dtor -Woverloaded-virtual` for C++ | `/W4`, plus the warnings that `/W4` leaves off and GCC's set has: conversions that lose data or change sign (`/w14242 /w14254 /w14365 /w14826`), a class with virtual functions and a non-virtual destructor (`/w14265`), a virtual function hidden by an overload (`/w14263`), and suspicious comparisons and casts (`/w14287 /w14296 /w14905 /w14906 /w14928`) |
 | `werror: true` | `-Werror` | `/WX` |
 | PIC (dependency builds, shared libraries; not on Windows) | `-fPIC` | — |
-| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /utf-8 /Zc:preprocessor /bigobj`, and for C++ `/EHsc /Zc:__cplusplus /permissive-`. MSVC has no colour flag |
+| always | `-fdiagnostics-color=always` (see the note below) | `/nologo /utf-8 /Zc:preprocessor /bigobj /external:W0`, and for C++ `/EHsc /Zc:__cplusplus /permissive-`. `/external:W0` silences the toolchain's own headers (§1.5). MSVC has no colour flag |
 | `cflags` / `cxxflags` / `ldflags` | appended last, verbatim: `cflags` to C compiles, `cxxflags` to C++ compiles | appended last, verbatim |
 
 The rest of a profile applies to C as it does to C++: `opt`, `debug`, `assertions`, `lto`, `sanitizers`, `warnings`, `werror`, `defines`, PIC and the colour flag. C and C++ translation units also get the same include directories and definitions (§4.3).
@@ -207,7 +207,7 @@ Each profile has its own `build.ninja` and output directory, so switching profil
 **Dependency order:** a topological order of the resolved graph in which every package comes **before** its dependencies. Ties are broken by name. Call it *D*. Dev-only packages are appended at the end and are used only by test targets.
 
 - **Include directories** (`incs`): `src/`, the root's `include/` (if it exists), then `cpm_modules/<pkg>/include` for each `pkg` in *D*. Test translation units add dev-dependency includes and `tests/`.
-- **Definitions:** profile `defines` and `assertions`, then the root's `defines` and `publicDefines`, then the `publicDefines` of every package in *D*, then platform-override additions. Duplicates are removed (first occurrence kept). Conflicting values for the same name are an error.
+- **Definitions:** profile `defines` and `assertions`, then the root's `defines` and `publicDefines`, then the `publicDefines` of every package in *D*, then platform-override additions. Duplicates are removed (first occurrence kept). Conflicting values for the same name are an error. Last come the export macros ([manifest.md §4.1](manifest.md#41-exported-symbols-name_api)): the root's own `<NAME>_API`, and that of every library package in *D*, empty.
 - **Link line** for an executable, a shared library or a test: the target's own objects (core objects plus entrypoint, or the root library), then for each library package in *D*: `-Lcpm_modules/<pkg>/lib -l<linkName>`, path-dependency archives, then `systemLibs` of the root and of every package in *D*, deduplicated **keeping the last occurrence**, then the profile `ldflags`. Store archives are also listed as implicit inputs (`| …/libfmt.a`), so a rebuilt dependency triggers a relink.
 
 ### 4.4 Path dependencies
@@ -306,6 +306,9 @@ After generating `build.ninja`, CPM runs `ninja -f <file> -t compdb cxx cc` and 
 ### 4.7 Shared libraries at run time (*post-MVP for shared-library dependencies*)
 
 - A root `shared-lib` target is supported in the MVP: `-shared`, plus `-fPIC` off Windows. On MinGW it adds `-Wl,--out-implib,<lib>.dll.a`, and every symbol is exported automatically when the code has no `__declspec(dllexport)`. On Linux it adds `-Wl,-soname,lib<name>.so`, on macOS `-dynamiclib -Wl,-install_name,@rpath/lib<name>.dylib`, so dependents record the file name rather than the build path. The package's tests depend on the library and find it through `-Wl,-rpath,$ORIGIN/..` (macOS: `@loader_path/..`).
+- **With MSVC,** a root `shared-lib` links with `/DLL /IMPLIB:<name>.lib`, which writes `<name>.dll` and its import library `<name>.lib` into `build/<profile>/`. The tests link the import library and find the DLL at run time through `PATH`, which `cpm test` starts with `build/<profile>/` (§7).
+  - What the library exports is what it marks with its `<NAME>_API` ([manifest.md §4.1](manifest.md#41-exported-symbols-name_api)).
+  - When it marks nothing, `link.exe` writes no import library and the build fails. CPM then says so: `the shared library mylib exports nothing: mark its API with MYLIB_API (manifest.md §4.1)`.
 - For shared-library **dependencies**, CPM copies their runtime files into `build/<profile>/` after linking on Windows (there is no rpath). On ELF and Mach-O it adds `-Wl,-rpath,<absolute store lib dir>`.
 
 ## 5. Dependency builds

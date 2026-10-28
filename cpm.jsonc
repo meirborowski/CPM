@@ -3,7 +3,7 @@
 {
   "$schema": "./schema/cpm.schema.json",
   "name": "cpm",
-  "version": "0.4.8",
+  "version": "0.4.9",
   "description": "C++ package manager and build system",
   "license": "MIT",
   "std": "c++23",

@@ -2,6 +2,33 @@
 
 Every CPM release, newest first. A version's section here becomes its release notes on GitHub: the [release workflow](.github/workflows/release.yml) publishes it, followed by how to install. It refuses to release a version that has no section. See [CONTRIBUTING.md](CONTRIBUTING.md#releasing).
 
+## 0.4.9 — 2026-10-28
+
+Shared libraries with MSVC, one export macro for every compiler, and Visual Studio's Build Tools from `cpm setup`.
+
+### New
+
+- **Shared libraries with MSVC.** A `shared-lib` package links as `<name>.dll` with its import library `<name>.lib`, and its tests find the DLL at run time.
+- **An export macro for every library package:** `<NAME>_API`, so `CPM_JSON_API` for cpm-json. CPM passes it as a definition, so a library marks what it exports the same way for every compiler, built static or shared:
+
+  ```cpp
+  GREETER_API std::string greeting(const std::string& name);
+  ```
+
+  - A shared library's own sources get `__declspec(dllexport)` on Windows, and default visibility elsewhere.
+  - Its tests get `__declspec(dllimport)`.
+  - Static libraries, header-only libraries and path dependencies get it empty.
+  - `cpm init --lib` and `--shared-lib` write a header that uses it.
+  - An MSVC DLL that marks nothing exports nothing, and the build now says so and what to mark.
+- **`cpm setup --compiler msvc`.**
+  - It makes an installed Visual Studio this machine's compiler.
+  - Without one, it installs Visual Studio Build Tools 2026 with winget, after saying what that means: several gigabytes, administrator rights, and its license.
+
+### Also
+
+- **No warnings from MSVC's own headers,** as GCC and Clang report none from system headers. CPM keeps `vcvarsall.bat`'s `EXTERNAL_INCLUDE` and compiles with `/external:W0`. Toolchains cached by 0.4.8 are set up again once.
+- **Path dependencies** still compile into the project's build as static archives, so a shared-library path dependency is linked statically. Shared libraries as dependencies come later.
+
 ## 0.4.8 — 2026-10-27
 
 Build and test with Visual Studio's compiler, MSVC, without a Developer Command Prompt. (0.4.6 and 0.4.7 have no CPM releases: 0.4.6 was cpm-org's libraries on the registry, and prebuilt binaries moved later.)

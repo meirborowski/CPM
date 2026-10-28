@@ -127,10 +127,21 @@ Done when CPM built with MSVC passes its own tests, and CI runs a Windows MSVC j
 
 ## 0.4.9: MSVC, part 2
 
-- Shared libraries: symbol exports (`__declspec(dllexport)` through a generated export macro), import libraries, and DLLs found at run time.
-- `cpm setup` on Windows can install Visual Studio Build Tools (through winget, after asking), as an alternative to WinLibs GCC.
+- **Shared libraries with MSVC:** a `shared-lib` package links as a DLL with its import library, and its tests find the DLL at run time.
+- **An export macro** for every library package, `<NAME>_API` (`CPM_JSON_API` for cpm-json), passed by CPM as a definition ([manifest.md §4.1](docs/spec/manifest.md#41-exported-symbols-name_api)):
+  - a shared library's own sources get `__declspec(dllexport)` on Windows and default visibility elsewhere;
+  - its tests get `__declspec(dllimport)`;
+  - static libraries get nothing.
 
-Done when the cpm-org libraries install and pass their tests with MSVC.
+  `cpm init --shared-lib` writes a library that uses it, and a DLL that exports nothing gets an error that says what to do.
+- **No warnings from MSVC's own headers,** as GCC and Clang report none from system headers. CPM keeps `vcvarsall.bat`'s `EXTERNAL_INCLUDE` and compiles with `/external:W0`.
+- **Build Tools:** `cpm setup --compiler msvc` installs Visual Studio Build Tools through winget, after asking, as an alternative to WinLibs GCC. On a machine that already has the C++ tools, it chooses MSVC.
+- **The cpm-org libraries' CI gains a Windows MSVC job,** in the default and release profiles. They already pass their tests with CPM 0.4.8's MSVC.
+- **Shared-library dependencies** remain for later: 0.4.10's isolation on MSVC is where they are needed first.
+
+Done when:
+- a library made with `cpm init --shared-lib` builds and passes its tests as a shared library with MSVC, MinGW GCC, GCC, Clang and Apple Clang;
+- the cpm-org libraries pass their tests with MSVC in their own CI.
 
 ## 0.4.10: Symbol isolation
 

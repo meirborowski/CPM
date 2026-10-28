@@ -134,12 +134,35 @@ If both `src/main.cpp` and `src/lib.cpp` exist and `type` is absent, CPM picks `
 |---|---|---|
 | `executable` | `<name>[.exe]` = entrypoint + **core objects** (every source except the entrypoint) | core objects |
 | `static-lib` | `lib<name>.a` / `<name>.lib` from all sources | the library |
-| `shared-lib` | `lib<name>.so` / `.dylib` / `.dll` (+ import library) from all sources | the library |
+| `shared-lib` | `lib<name>.so` / `.dylib` / `.dll`, or MSVC's `<name>.dll` (+ import library) from all sources. What it exports is marked with its `<NAME>_API` (§4.1) | the library |
 | `header-only` | none (headers only) | nothing extra |
 
 Executables split their sources so that tests can exercise internal code: everything except the entrypoint compiles once and links into both the executable and every test.
 
 **Tests:** each `tests/*.test.cpp` (non-recursive; `.cc`, `.cxx` and `.c` also accepted) becomes its own executable named after the file stem, for example `tests/json.test.cpp` → `json.test[.exe]`. Files in subdirectories of `tests/` are helpers and are never test entrypoints. Tests are built only by `cpm test` or `cpm build --tests` ([build.md §7](build.md#7-tests)).
+
+### 4.1 Exported symbols: `<NAME>_API`
+
+A shared library has to say which functions, classes and variables it exports: MSVC exports nothing else. CPM gives every library package a macro for that, so a library is written the same way for every compiler and whether it is built static or shared:
+
+```cpp
+// include/cpm-json/value.hpp in the package "cpm-json"
+class CPM_JSON_API Value { … };
+CPM_JSON_API Value parse(std::string_view text);
+```
+
+- **The name** is the package name in upper case, with every character that isn't a letter or a digit replaced by `_`, followed by `_API`: `cpm-json` gives `CPM_JSON_API`, `fmt` gives `FMT_API`.
+- **Where it is defined:** in every compile that can see the package's headers, which are the package's own sources and tests, and everything that depends on it. CPM passes it as a definition ([build.md §4.3](build.md#43-include-directories-definitions-and-link-order)).
+- **Its value:**
+
+| The package is | Its own sources | Its tests | Everything else |
+|---|---|---|---|
+| a `shared-lib` built as the root package | `__declspec(dllexport)` on Windows, `__attribute__((visibility("default")))` elsewhere | `__declspec(dllimport)` on Windows, `__attribute__((visibility("default")))` elsewhere | — |
+| a `static-lib`, a `header-only` library, or any library built from a path dependency (which is always compiled into an archive, [build.md §4.4](build.md#44-path-dependencies)) | empty | empty | empty |
+
+- **On MinGW,** a shared library that marks nothing still exports everything, as before. Once it marks something, only what it marks is exported, as with MSVC.
+- **With MSVC,** a shared library that marks nothing exports nothing, so `link.exe` writes no import library. The build then stops with an error that says to mark the library's API with its macro.
+- A package that defines a macro of that name itself, in `defines` or in a header, gets an error from the compiler for the redefinition. The package must rename its own macro.
 
 ## 5. Sources and include directories
 

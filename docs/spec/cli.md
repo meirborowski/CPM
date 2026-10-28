@@ -47,7 +47,7 @@ Scaffolds a package in `<dir>` (default `.`, created if missing).
 | Type | Files |
 |---|---|
 | executable (default) | `cpm.jsonc`, `src/main.cpp`, `src/greeting.hpp`, `src/greeting.cpp`, `tests/greeting.test.cpp`, `.gitignore` |
-| `--lib` / `--shared-lib` | `cpm.jsonc`, `include/<name>/<name>.hpp`, `src/lib.cpp`, `tests/<name>.test.cpp`, `.gitignore` |
+| `--lib` / `--shared-lib` | `cpm.jsonc`, `include/<name>/<name>.hpp`, `src/lib.cpp`, `tests/<name>.test.cpp`, `.gitignore`. The header marks the library's function with its `<NAME>_API` ([manifest.md §4.1](manifest.md#41-exported-symbols-name_api)), so a shared library exports it with every compiler |
 | `--header-only` | `cpm.jsonc`, `include/<name>/<name>.hpp`, `tests/<name>.test.cpp`, `.gitignore` |
 
 The generated `cpm.jsonc` carries comments that explain each field and the conventions. The executable template shows the core/entrypoint split ([manifest.md §4](manifest.md#4-target-inference)): `greeting.cpp` is shared by the executable and the test. The C++ templates only use C++11, so they build with every `std`. `.gitignore` contains `cpm_modules/`, `/build/` and `compile_commands.json`. If a `.gitignore` already exists, missing lines are appended to it.
@@ -339,7 +339,7 @@ Packs the current package and adds its version to a registry ([registry.md §6](
 ### `cpm setup`
 
 ```
-cpm setup [--check] [--yes] [--managed] [--compiler gcc|clang]
+cpm setup [--check] [--yes] [--managed] [--compiler gcc|clang|msvc]
 ```
 
 Makes the machine ready to build: a C++ compiler CPM supports (GCC 13+, Clang 17+, Apple Clang 15+, or on Windows MSVC 19.40+ from Visual Studio 2022 17.10 or later), Ninja 1.10+, and the helpers it drives (`git`, `curl`, `tar`). A Visual Studio with the C++ tools counts as Windows' compiler, and its Ninja as Ninja ([build.md §1.4](build.md#14-finding-compilers), [§6](build.md#6-running-ninja)), so a machine with only Visual Studio needs no downloads. The one-line installers run it after installing CPM ([registry.md §8](registry.md#8-installing-cpm)). It first reports what it finds, then installs what is missing:
@@ -355,10 +355,23 @@ With `apt-get`, CPM installs a versioned GCC package such as `g++-14` only if `a
 - **Pinned downloads.** What goes into `$CPM_HOME/tools` is listed, with URLs and SHA-256 checksums, in the `toolchains.json` of CPM's built-in registry ([registry.md §8.2](registry.md#82-toolchainsjson)); `CPM_TOOLCHAINS_URL` replaces that location. Every download is verified before it is unpacked, unpacked into a staging directory, and moved into place only when complete.
 - **Configuration.** When CPM installs a tool into `$CPM_HOME/tools`, or chooses a compiler that is not the first one on `PATH` (such as `g++-14`), it records it in `$CPM_HOME/config.jsonc` (`"cxx"`, `"ninja"`), editing the file in place so comments survive. Tools that are already usable are left alone.
 - **Before changing anything** CPM lists the commands it will run and the downloads with their sizes, and asks. `--yes` answers yes (for scripts and CI). `--check` only reports, and exits with 1 if anything is missing.
-- `--compiler gcc|clang` installs that compiler even when another one works, and makes it the machine's choice (`"cxx"` in `config.jsonc`):
+- `--compiler gcc|clang|msvc` installs that compiler even when another one works, and makes it the machine's choice (`"cxx"` in `config.jsonc`, or `"toolchain": "msvc"` for MSVC):
   - Linux: the distribution's packages. With `apt-get` that is the newest `g++-N` or `clang-N` package it has (from 15 down to 13 for GCC, and from 20 down to 17 for Clang), and otherwise `g++` or `clang`. Clang uses GCC's standard library on Linux, so `--compiler clang` installs `g++` too.
   - macOS: `brew install gcc` or `brew install llvm`, which needs Homebrew. Without `--compiler`, macOS uses Apple's Clang from the Command Line Tools.
   - Windows: `gcc` is WinLibs GCC, as without `--compiler`. `clang` isn't offered yet; CPM says so and suggests llvm-mingw or MSYS2's `mingw-w64-ucrt-x86_64-clang`.
+  - Windows, `msvc`: a Visual Studio that already has the C++ tools is used as it is ([build.md §1.4](build.md#14-finding-compilers)). Otherwise CPM installs Visual Studio Build Tools 2026 with winget:
+
+    ```
+    winget install --id Microsoft.VisualStudio.BuildTools --exact --source winget
+                   --accept-package-agreements --accept-source-agreements
+                   --override "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"
+    ```
+
+    - The C++ workload with its recommended components brings MSVC, a Windows SDK, and the CMake tools whose Ninja CPM uses ([build.md §6](build.md#6-running-ninja)).
+    - Before running it, CPM says that it downloads several gigabytes, that Windows asks for administrator rights, and that answering yes accepts the Build Tools license (https://visualstudio.microsoft.com/license-terms/). `--yes` answers yes.
+    - `--passive` shows the installer's progress without asking anything more.
+    - Without winget, CPM says where to download Build Tools by hand.
+    - `msvc` on Linux or macOS is an error.
 - `--managed` installs the tools CPM can provide into `$CPM_HOME/tools` (on Windows the compiler and Ninja, elsewhere Ninja) even when usable ones are already installed, and points the configuration at them.
 - **Last**, CPM checks the result the way a build would use it: it probes the compiler, checks that it accepts C++23 (`-std=c++23`, or MSVC's spelling of it), and runs `ninja --version`.
 

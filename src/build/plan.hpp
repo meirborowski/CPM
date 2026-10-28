@@ -79,6 +79,9 @@ struct BuildPlan {
     toolchain::Toolchain toolchain;
 
     std::vector<std::string> cxxflags, cflags, defines, incs, test_incs, test_defines, ldflags, libs;  // ready-made flags
+    // A library root's own export macro on its sources (manifest.md §4.1); `defines` holds what every root compile
+    // shares, and `test_defines` adds the tests' own, the root's export macro among them.
+    std::vector<std::string> source_defines;
     std::vector<CompileStep> compiles;
     std::optional<ArchiveStep> archive;  // static library
     std::vector<ArchiveStep> dependency_archives;  // path dependencies

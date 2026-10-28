@@ -32,6 +32,10 @@ public:
             // main() only in the objects it is given.
             {"link", "$linker /nologo /INCREMENTAL:NO /SUBSYSTEM:CONSOLE /OUT:$out @$out.rsp $ldflags", "LINK $out", "", "",
              "$out.rsp", "$in $libs", ""},
+            // A DLL exports what its code marks with its <NAME>_API (manifest.md §4.1); /IMPLIB comes from
+            // shared_link_flags.
+            {"link_shared", "$linker /nologo /INCREMENTAL:NO /DLL /OUT:$out @$out.rsp $ldflags", "LINK $out", "", "",
+             "$out.rsp", "$in $libs", ""},
         };
     }
 
@@ -66,7 +70,9 @@ public:
         if (p.debug_runtime) runtime += 'd';
         f.compile.push_back(runtime);
 
-        for (const char* flag : {"/utf-8", "/Zc:preprocessor", "/bigobj"}) f.compile.push_back(flag);
+        // /external:W0: nothing from the toolchain's own headers (EXTERNAL_INCLUDE), as GCC and Clang report nothing
+        // from system headers (build.md §1.5).
+        for (const char* flag : {"/utf-8", "/Zc:preprocessor", "/bigobj", "/external:W0"}) f.compile.push_back(flag);
         if (language == Language::Cxx) {
             for (const char* flag : {"/EHsc", "/Zc:__cplusplus", "/permissive-"}) f.compile.push_back(flag);
         }
@@ -87,8 +93,8 @@ public:
     std::string system_lib_flag(std::string_view name) const override {
         return name.ends_with(".lib") ? std::string(name) : std::string(name) + ".lib";
     }
-    std::vector<std::string> shared_link_flags(std::string_view, std::string_view) const override {
-        throw Error("shared libraries with MSVC come in CPM 0.4.9", "build a static library, or use a MinGW toolchain");
+    std::vector<std::string> shared_link_flags(std::string_view, std::string_view import_lib) const override {
+        return {"/IMPLIB:" + std::string(import_lib)};
     }
 
     std::string object_ext() const override { return ".obj"; }

@@ -36,18 +36,20 @@ std::vector<fs::path> compiler_dirs(const VisualStudio& vs);
 // inside a Visual Studio.
 std::optional<VisualStudio> locate(const fs::path& cl, const std::vector<VisualStudio>& known);
 
-// What vcvarsall.bat set, from the output of `set` after it ran: INCLUDE, LIB, LIBPATH, and as PATH the directories
-// it added to `inherited_path` (';'-separated, in order).
+// What vcvarsall.bat set, from the output of `set` after it ran: INCLUDE, LIB, LIBPATH, EXTERNAL_INCLUDE (the
+// toolchain's own headers, which /external:W0 keeps quiet), and as PATH the directories it added to `inherited_path`
+// (';'-separated, in order).
 std::map<std::string, std::string> parse_environment(std::string_view set_output, std::string_view inherited_path);
 
 // Runs vcvarsall.bat for the toolset of `vs` and returns what it set (build.md §1.5). Throws cpm::Error when it fails.
 std::map<std::string, std::string> capture_environment(const VisualStudio& vs);
 
-// Whether every INCLUDE and LIB directory of a captured environment still exists.
+// Whether a captured environment is complete (it has EXTERNAL_INCLUDE, which CPM 0.4.8 didn't keep) and every
+// INCLUDE and LIB directory still exists.
 bool environment_intact(const std::map<std::string, std::string>& env);
 
-// `env` as variables for a child process: INCLUDE, LIB and LIBPATH as captured, and PATH with the captured
-// directories in front of `inherited_path`.
+// `env` as variables for a child process: INCLUDE, LIB, LIBPATH and EXTERNAL_INCLUDE as captured, and PATH with the
+// captured directories in front of `inherited_path`.
 std::vector<std::pair<std::string, std::string>> process_variables(const std::map<std::string, std::string>& env,
                                                                    std::string_view inherited_path);
 

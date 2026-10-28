@@ -67,6 +67,16 @@ std::string apt_clang_package(const std::function<bool(std::string_view)>& avail
 // package has as a regular expression ("g++-15" matches clang-15), so other packages' entries must not count.
 bool apt_policy_offers(std::string_view policy, std::string_view package);
 
+// ---- Windows: MSVC (cpm setup --compiler msvc)
+
+// What --compiler msvc does: use a Visual Studio that has the C++ tools, install Build Tools with winget, or neither.
+enum class MsvcAction { Use, InstallBuildTools, Unavailable };
+MsvcAction msvc_action(bool has_msvc, bool has_winget);
+
+// The winget command that installs Visual Studio Build Tools 2026 with the C++ workload and its recommended
+// components: MSVC, a Windows SDK, and the CMake tools whose Ninja CPM uses.
+std::vector<std::string> build_tools_command();
+
 // ---- configuration
 
 // Sets a top-level key of $CPM_HOME/config.jsonc, creating the file if needed and keeping its comments.
@@ -76,7 +86,7 @@ struct Options {
     bool check = false;    // report only
     bool yes = false;      // do not ask
     bool managed = false;  // install CPM's own tools even when others work
-    std::optional<std::string> compiler;  // --compiler gcc|clang: install it and make it the machine's choice
+    std::optional<std::string> compiler;  // --compiler gcc|clang|msvc: install it and make it the machine's choice
 };
 
 // The whole command; returns the exit code (0 when the machine is ready).

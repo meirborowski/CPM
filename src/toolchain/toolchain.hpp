@@ -52,15 +52,15 @@ struct Toolchain {
 
     // MSVC only (build.md §1.3, §1.5).
     std::optional<VisualStudio> visual_studio;
-    std::map<std::string, std::string> env;  // INCLUDE, LIB, LIBPATH, and PATH: the directories vcvarsall.bat adds
+    std::map<std::string, std::string> env;  // INCLUDE, LIB, LIBPATH, EXTERNAL_INCLUDE, and PATH: what vcvarsall.bat adds
     std::string deps_prefix;                 // what starts /showIncludes lines: "Note: including file:"
 
     bool is_mingw() const { return os == Os::Windows && (family == Family::Gcc || family == Family::Clang); }
     std::string description() const;  // "gcc 13.2.0"
 };
 
-// The variables a process that runs the toolchain's tools needs: for MSVC, INCLUDE, LIB, LIBPATH and PATH with the
-// toolchain's directories in front of the inherited PATH (build.md §1.5). Nothing for GCC and Clang.
+// The variables a process that runs the toolchain's tools needs: for MSVC, INCLUDE, LIB, LIBPATH, EXTERNAL_INCLUDE and
+// PATH with the toolchain's directories in front of the inherited PATH (build.md §1.5). Nothing for GCC and Clang.
 std::vector<std::pair<std::string, std::string>> process_environment(const Toolchain& tc);
 
 // The directories whose DLLs programs built by the toolchain load at run time on Windows: MinGW's compiler

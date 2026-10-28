@@ -4,6 +4,7 @@
 #include <format>
 #include <map>
 
+#include "build/exports.hpp"
 #include "core/error.hpp"
 #include "core/paths.hpp"
 #include "core/strings.hpp"
@@ -132,13 +133,26 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
     if (!profile.assertions) assertion_defines.push_back("NDEBUG");
     std::vector<std::string> dep_defines, dev_dep_defines;
     for (const auto& d : dependencies) append(d.dev ? dev_dep_defines : dep_defines, d.public_defines);
+    // Export macros (manifest.md §4.1): every dependency's is empty. The root's own goes on its sources and its tests,
+    // which see a shared library from opposite sides.
+    std::vector<std::string> dep_exports, dev_dep_exports;
+    for (const auto& d : dependencies) {
+        (d.dev ? dev_dep_exports : dep_exports).push_back(export_definition(d.name, ExportUse::Plain, tc.os));
+    }
     std::vector<std::string> root_defines = merge_defines({assertion_defines, profile.defines, m.defines,
                                                            m.public_defines, platform.defines,
-                                                           platform.public_defines, dep_defines});
+                                                           platform.public_defines, dep_defines, dep_exports});
     for (const auto& d : root_defines) plan.defines.push_back(driver.define_flag(d));
-    for (const auto& d : merge_defines({root_defines, dev_dep_defines})) {
+    for (const auto& d : merge_defines({root_defines, dev_dep_defines, dev_dep_exports})) {
         if (std::find(root_defines.begin(), root_defines.end(), d) == root_defines.end())
             plan.test_defines.push_back(driver.define_flag(d));
+    }
+    if (layout.kind != TargetKind::Executable) {
+        bool shared = layout.kind == TargetKind::SharedLib;
+        plan.source_defines.push_back(
+            driver.define_flag(export_definition(m.name, shared ? ExportUse::BuildingShared : ExportUse::Plain, tc.os)));
+        plan.test_defines.push_back(
+            driver.define_flag(export_definition(m.name, shared ? ExportUse::LinkingShared : ExportUse::Plain, tc.os)));
     }
 
     plan.incs.push_back(driver.include_flag("src"));
@@ -170,7 +184,8 @@ BuildPlan make_plan(const manifest::Manifest& m, const manifest::Profile& profil
             ar.output = std::format("{}/lib/deps/{}", plan.build_dir, driver.static_lib_file(d.name));
             std::vector<std::string> incs, defines;
             for (const auto& dir : d.sources->include_dirs) incs.push_back(driver.include_flag(dir));
-            for (const auto& def : merge_defines({assertion_defines, profile.defines, d.sources->defines}))
+            for (const auto& def : merge_defines({assertion_defines, profile.defines, d.sources->defines, dep_exports,
+                                                  dev_dep_exports}))
                 defines.push_back(driver.define_flag(def));
             std::vector<std::string> cflags = any_c(d.sources->files) ? c_flags(d.sources->cstd) : std::vector<std::string>{};
             for (const auto& file : d.sources->files) {

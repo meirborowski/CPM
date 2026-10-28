@@ -15,7 +15,12 @@ int cmd_setup(const ParsedArgs& args, Context&) {
     options.managed = args.flag("managed");
     if (options.check && options.managed) throw UsageError("--check and --managed exclude each other");
     if (auto compiler = args.value("compiler")) {
-        if (*compiler != "gcc" && *compiler != "clang") throw UsageError(std::format("--compiler takes gcc or clang, not '{}'", *compiler));
+        if (*compiler != "gcc" && *compiler != "clang" && *compiler != "msvc") {
+            throw UsageError(std::format("--compiler takes gcc, clang or msvc, not '{}'", *compiler));
+        }
+#ifndef _WIN32
+        if (*compiler == "msvc") throw UsageError("--compiler msvc is for Windows: MSVC is Visual Studio's compiler");
+#endif
         options.compiler = *compiler;
     }
     return setup::run(options, paths::cpm_home());

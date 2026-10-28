@@ -1,5 +1,6 @@
 // cpm setup (docs/spec/cli.md): the decisions it makes, which need no network. Downloading and unpacking
 // toolchains is exercised by running cpm setup itself.
+#include <algorithm>
 #include <set>
 
 #include "core/fsx.hpp"
@@ -135,4 +136,23 @@ TEST(writes_the_configuration_without_losing_comments) {
     auto config = manifest::load_user_config(home.path());
     CHECK_EQ(config.cxx.value_or(""), "C:/tools/winlibs/g++.exe");
     CHECK_EQ(config.registries.at("default").url, "https://cpm-registry.com/");
+}
+
+TEST(msvc_uses_visual_studio_or_installs_build_tools) {
+    // cpm setup --compiler msvc (cli.md): an installed Visual Studio is used as it is; without one, winget installs
+    // Build Tools; without winget, CPM can only say where to get them.
+    CHECK(setup::msvc_action(true, true) == setup::MsvcAction::Use);
+    CHECK(setup::msvc_action(true, false) == setup::MsvcAction::Use);
+    CHECK(setup::msvc_action(false, true) == setup::MsvcAction::InstallBuildTools);
+    CHECK(setup::msvc_action(false, false) == setup::MsvcAction::Unavailable);
+
+    std::vector<std::string> command = setup::build_tools_command();
+    auto has = [&](const std::string& arg) { return std::find(command.begin(), command.end(), arg) != command.end(); };
+    CHECK_EQ(command.front(), "winget");
+    CHECK(has("Microsoft.VisualStudio.BuildTools"));  // Build Tools 2026
+    CHECK(has("--exact"));
+    CHECK(has("--accept-package-agreements"));       // the user said yes, which accepts the license
+    CHECK(command.back().contains("Microsoft.VisualStudio.Workload.VCTools"));
+    CHECK(command.back().contains("--includeRecommended"));  // with the CMake tools, whose Ninja CPM uses
+    CHECK(command.back().contains("--passive"));
 }

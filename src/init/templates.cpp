@@ -2,6 +2,7 @@
 
 #include <format>
 
+#include "build/exports.hpp"
 #include "init/init.hpp"
 #include "json/write.hpp"
 
@@ -113,7 +114,8 @@ int main() {{
 
 // --- libraries -------------------------------------------------------------------------------
 
-std::string lib_header(const std::string& id, bool header_only) {
+// `macro`: the package's export macro (manifest.md §4.1), which a static or shared library's functions are marked with.
+std::string lib_header(const std::string& id, bool header_only, const std::string& macro = "") {
     if (header_only) {
         return std::format(R"(#pragma once
 
@@ -131,13 +133,14 @@ inline int add(int a, int b) {{
     return std::format(R"(#pragma once
 
 // Public headers live in include/; packages that depend on this one see them.
+// {} marks what the library exports when it is built as a shared library. CPM defines it.
 namespace {} {{
 
-int add(int a, int b);
+{} int add(int a, int b);
 
 }}  // namespace {}
 )",
-                       id, id);
+                       macro, id, macro, id);
 }
 
 std::string lib_source(const std::string& name, const std::string& id) {
@@ -186,7 +189,7 @@ std::vector<File> render(const Options& o) {
             break;
         case TargetKind::StaticLib:
         case TargetKind::SharedLib:
-            files.push_back({std::format("include/{}/{}.hpp", o.name, o.name), lib_header(id, false)});
+            files.push_back({std::format("include/{}/{}.hpp", o.name, o.name), lib_header(id, false, build::export_macro(o.name))});
             files.push_back({"src/lib.cpp", lib_source(o.name, id)});
             files.push_back({std::format("tests/{}.test.cpp", o.name), lib_test(o.name, id)});
             break;

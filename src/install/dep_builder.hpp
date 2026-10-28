@@ -16,6 +16,7 @@ namespace fs = std::filesystem;
 struct DependencyInputs {
     std::vector<fs::path> include_dirs;       // absolute
     std::vector<std::string> public_defines;
+    std::vector<std::string> dependencies;    // the names of its dependencies, transitively: their export macros
 };
 
 // Builds a static library from a store entry for the project's ABI into <entry>/lib/<abi16>/, unless it

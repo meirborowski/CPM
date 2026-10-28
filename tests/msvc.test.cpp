@@ -2,6 +2,7 @@
 // cl.exe, the MSVC driver and fingerprint, and, where Visual Studio is installed, a real build with it.
 
 #include <algorithm>
+#include <cstdio>
 
 #include "build/pipeline.hpp"
 #include "core/env.hpp"
@@ -114,12 +115,14 @@ TEST(vcvarsall_environment_keeps_what_it_added) {
                       "INCLUDE=C:\\VS\\include;C:\\SDK\\ucrt\r\n"
                       "LIB=C:\\VS\\lib\\x64;C:\\SDK\\lib\r\n"
                       "LIBPATH=C:\\VS\\lib\\x64\r\n"
+                      "EXTERNAL_INCLUDE=C:\\VS\\include;C:\\SDK\\ucrt\r\n"
                       "Path=C:\\VS\\bin\\Hostx64\\x64;C:\\SDK\\bin;C:\\Windows\\system32;C:\\Tools\\;C:\\VS\\bin\\Hostx64\\x64\r\n"
                       "VSCMD_VER=18.0\r\n";
     auto env = toolchain::vs::parse_environment(set, "C:\\Windows\\System32;C:\\Tools");
     CHECK_EQ(env.at("INCLUDE"), "C:\\VS\\include;C:\\SDK\\ucrt");
     CHECK_EQ(env.at("LIB"), "C:\\VS\\lib\\x64;C:\\SDK\\lib");
     CHECK_EQ(env.at("LIBPATH"), "C:\\VS\\lib\\x64");
+    CHECK_EQ(env.at("EXTERNAL_INCLUDE"), "C:\\VS\\include;C:\\SDK\\ucrt");
     CHECK_EQ(env.at("PATH"), "C:\\VS\\bin\\Hostx64\\x64;C:\\SDK\\bin");  // only what it added, once each
     CHECK(!env.contains("VSCMD_VER"));
 
@@ -131,6 +134,7 @@ TEST(vcvarsall_environment_keeps_what_it_added) {
         return std::string("<unset>");
     };
     CHECK_EQ(value("INCLUDE"), env.at("INCLUDE"));
+    CHECK_EQ(value("EXTERNAL_INCLUDE"), env.at("EXTERNAL_INCLUDE"));
     CHECK_EQ(value("PATH"), "C:\\VS\\bin\\Hostx64\\x64;C:\\SDK\\bin;C:\\Windows\\System32");
 }
 
@@ -140,6 +144,8 @@ TEST(a_captured_environment_is_intact_while_its_directories_exist) {
     fs::create_directories(t.path() / "lib");
     std::map<std::string, std::string> env = {{"INCLUDE", paths::to_utf8(t.path() / "include")},
                                               {"LIB", paths::to_utf8(t.path() / "lib")}};
+    CHECK(!toolchain::vs::environment_intact(env));  // no EXTERNAL_INCLUDE: cached by CPM 0.4.8
+    env["EXTERNAL_INCLUDE"] = env["INCLUDE"];
     CHECK(toolchain::vs::environment_intact(env));
     env["LIB"] += ";" + paths::to_utf8(t.path() / "uninstalled-sdk");
     CHECK(!toolchain::vs::environment_intact(env));
@@ -212,8 +218,8 @@ TEST(the_msvc_driver_maps_profiles_to_flags) {
     toolchain::Toolchain tc = fake_msvc();
     auto driver = toolchain::make_driver(tc);
     auto debug = driver->profile_flags(profile("debug"), toolchain::Language::Cxx, "/std:c++20", false);
-    for (const char* flag : {"/std:c++20", "/Od", "/Z7", "/W4", "/MD", "/utf-8", "/Zc:preprocessor", "/bigobj", "/EHsc",
-                             "/Zc:__cplusplus", "/permissive-"}) {
+    for (const char* flag : {"/std:c++20", "/Od", "/Z7", "/W4", "/MD", "/utf-8", "/Zc:preprocessor", "/bigobj",
+                             "/external:W0", "/EHsc", "/Zc:__cplusplus", "/permissive-"}) {
         INFO("flag {}", flag);
         CHECK(contains(debug.compile, flag));
     }
@@ -259,7 +265,9 @@ TEST(the_msvc_driver_names_files_and_rules) {
     CHECK(driver->lib_flags("C:/store/lib", "fmt") == (std::vector<std::string>{"/LIBPATH:C:/store/lib", "fmt.lib"}));
     CHECK_EQ(driver->system_lib_flag("shell32"), "shell32.lib");
     CHECK_EQ(driver->system_lib_flag("ws2_32.lib"), "ws2_32.lib");
-    CHECK_THROWS(driver->shared_link_flags("x.dll", "x.lib"), "shared libraries with MSVC come in CPM 0.4.9");
+    CHECK(driver->shared_link_flags("x.dll", "build/debug/x.lib") == std::vector<std::string>{"/IMPLIB:build/debug/x.lib"});
+    CHECK_EQ(driver->shared_lib_file("x"), "x.dll");
+    CHECK_EQ(driver->import_lib_file("x"), std::optional<std::string>("x.lib"));
 
     auto rules = driver->rules();
     auto rule = [&](const std::string& name) {
@@ -273,6 +281,8 @@ TEST(the_msvc_driver_names_files_and_rules) {
     CHECK(rule("ar").command.starts_with("$ar /nologo /OUT:$out"));
     CHECK(rule("link").command.contains("$linker"));
     CHECK(rule("link").command.contains("/SUBSYSTEM:CONSOLE"));  // so main() may come from a library
+    CHECK(rule("link_shared").command.contains("/DLL"));
+    CHECK(!rule("link_shared").command.contains("/SUBSYSTEM"));
 }
 
 TEST(msvc_fingerprints_use_the_full_version_and_its_flags) {
@@ -362,5 +372,33 @@ TEST(builds_tests_and_runs_with_visual_studio) {
     if (built.plan.tests.empty()) return;
     auto test = cpm::proc::capture({.argv = {paths::to_utf8(app / built.plan.tests[0].output)}});
     CHECK_EQ(test.exit_code, 0);
+#endif
+}
+
+TEST(an_msvc_dll_that_exports_nothing_says_how_to_export) {
+#ifndef _WIN32
+    std::puts("Visual Studio is Windows-only; skipping");
+#else
+    check::TempDir t;
+    SetEnvironmentVariableW(L"CPM_HOME", (t.path() / "home").wstring().c_str());
+    if (!toolchain::best_match(toolchain::list_compilers(t.path() / "home"), *toolchain::parse_request("msvc"))) {
+        std::puts("no Visual Studio with the C++ tools here; skipping");
+        return;
+    }
+    fs::path lib = t.path() / "quiet";
+    fixture::write(lib / "cpm.jsonc", R"({ "name": "quiet", "version": "1.0.0", "type": "shared-lib" })");
+    fixture::write(lib / "include" / "quiet.hpp", "#pragma once\nint quiet();\n");  // nothing marked with QUIET_API
+    fixture::write(lib / "src" / "lib.cpp", "#include <quiet.hpp>\nint quiet() { return 1; }\n");
+    build::BuildRequest req;
+    req.cwd = lib;
+    req.toolchain = toolchain::Choice{"msvc", "--toolchain"};
+    CHECK_THROWS(build::run_build(req, manifest::UserConfig{}), "the shared library quiet exports nothing: mark its API with QUIET_API");
+
+    // Marked, it exports, and link.exe writes the import library next to the DLL.
+    fixture::write(lib / "include" / "quiet.hpp", "#pragma once\nQUIET_API int quiet();\n");
+    build::BuildResult built = build::run_build(req, manifest::UserConfig{});
+    CHECK_EQ(built.exit_code, 0);
+    CHECK(fs::exists(lib / "build" / "debug" / "quiet.dll"));
+    CHECK(fs::exists(lib / "build" / "debug" / "quiet.lib"));
 #endif
 }

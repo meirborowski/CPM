@@ -45,7 +45,7 @@ const std::vector<Command>& command_table() {
           {{"check", 0, false, "", "Only report what is missing"},
            {"yes", 'y', false, "", "Do not ask before installing"},
            {"managed", 0, false, "", "Install CPM's own compiler and Ninja even if others work"},
-           {"compiler", 0, true, "<gcc|clang>", "Install this compiler and make it this machine's choice"}}},
+           {"compiler", 0, true, "<gcc|clang|msvc>", "Install this compiler and make it this machine's choice"}}},
          &cmd_setup, ""},
         {{"init", {}, "Create a new package", "cpm init [<dir>] [options]",
           {{"yes", 'y', false, "", "Accept all defaults"},

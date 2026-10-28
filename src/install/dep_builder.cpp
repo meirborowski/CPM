@@ -5,6 +5,7 @@
 #include <format>
 
 #include "build/layout.hpp"
+#include "build/exports.hpp"
 #include "build/ninja_writer.hpp"
 #include "build/plan.hpp"
 #include "core/env.hpp"
@@ -117,6 +118,9 @@ fs::path ensure_library(const build::Project& project, const lock::Package& pack
             if (std::find(define_list.begin(), define_list.end(), d) == define_list.end()) define_list.push_back(d);
         }
     }
+    // Export macros (manifest.md §4.1): a store package is a static library, so its own and its dependencies' are empty.
+    define_list.push_back(build::export_definition(package.name, build::ExportUse::Plain, tc.os));
+    for (const auto& dep : inputs.dependencies) define_list.push_back(build::export_definition(dep, build::ExportUse::Plain, tc.os));
     std::vector<std::string> defines;
     for (const auto& d : define_list) defines.push_back(driver.define_flag(d));
     std::vector<std::string> cxxflags = flags.compile;

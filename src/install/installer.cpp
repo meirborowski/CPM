@@ -203,6 +203,7 @@ Materialized materialize(const build::Project& project, const lock::Lockfile& lo
                         if (info.at(dep).include) inputs.include_dirs.push_back(*info.at(dep).include);
                     }
                     inputs.public_defines = i.trans_defines;
+                    inputs.dependencies = i.deps_includes;
                     if (!ninja) ninja = build::find_ninja(config.ninja, project.home);
                     i.lib = ensure_library(project, p, i.dir, i.manifest, inputs, *ninja);
                 }

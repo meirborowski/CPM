@@ -223,6 +223,7 @@ std::map<std::string, std::string> parse_environment(std::string_view set_output
         if (name == "include") env["INCLUDE"] = value;
         else if (name == "lib") env["LIB"] = value;
         else if (name == "libpath") env["LIBPATH"] = value;
+        else if (name == "external_include") env["EXTERNAL_INCLUDE"] = value;
         else if (name == "path") path = value;
     }
     std::vector<std::string> inherited;
@@ -263,6 +264,8 @@ std::map<std::string, std::string> capture_environment(const VisualStudio& vs) {
 }
 
 bool environment_intact(const std::map<std::string, std::string>& env) {
+    // Captured before CPM 0.4.9, without EXTERNAL_INCLUDE: capture it again (build.md §1.5).
+    if (!env.contains("EXTERNAL_INCLUDE")) return false;
     for (const char* name : {"INCLUDE", "LIB"}) {
         auto it = env.find(name);
         if (it == env.end()) return false;
@@ -277,7 +280,7 @@ bool environment_intact(const std::map<std::string, std::string>& env) {
 std::vector<std::pair<std::string, std::string>> process_variables(const std::map<std::string, std::string>& env,
                                                                    std::string_view inherited_path) {
     std::vector<std::pair<std::string, std::string>> out;
-    for (const char* name : {"INCLUDE", "LIB", "LIBPATH"}) {
+    for (const char* name : {"INCLUDE", "LIB", "LIBPATH", "EXTERNAL_INCLUDE"}) {
         auto it = env.find(name);
         out.emplace_back(name, it == env.end() ? std::string() : it->second);
     }

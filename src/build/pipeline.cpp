@@ -4,6 +4,7 @@
 #include <chrono>
 #include <format>
 
+#include "build/exports.hpp"
 #include "build/layout.hpp"
 #include "build/ninja_gen.hpp"
 #include "build/runner.hpp"
@@ -75,6 +76,22 @@ void derive_from_manifest(Project& p, const std::string& profile_name) {
     std::vector<std::string> cxxflags = p.profile.cxxflags;
     cxxflags.insert(cxxflags.end(), platform.cxxflags.begin(), platform.cxxflags.end());
     p.abi = toolchain::fingerprint(p.toolchain, *p.driver, p.profile, manifest::project_std(p.manifest), defines, cxxflags);
+}
+
+// An MSVC DLL that marks nothing with its export macro exports nothing, and link.exe then writes no import library
+// (build.md §4.7). Without this, the next link that needs it would only say that the file is missing.
+void check_dll_exports(const BuildPlan& plan, const toolchain::Toolchain& tc, const toolchain::Driver& driver) {
+    if (plan.kind != manifest::TargetKind::SharedLib || tc.family != toolchain::Family::Msvc) return;
+    std::optional<std::string> implib = driver.import_lib_file(plan.package);
+    std::error_code ec;
+    fs::path out = plan.root / paths::from_utf8(plan.out_dir);
+    if (!implib || !fs::exists(out / paths::from_utf8(driver.shared_lib_file(plan.package)), ec) ||
+        fs::exists(out / paths::from_utf8(*implib), ec))
+        return;
+    std::string macro = export_macro(plan.package);
+    throw Error(std::format("the shared library {} exports nothing: mark its API with {} (manifest.md §4.1)", plan.package,
+                            macro),
+                std::format("for example `{} int add(int a, int b);` in its header; MSVC exports only what is marked", macro));
 }
 
 }  // namespace
@@ -223,6 +240,7 @@ BuildResult run_build(const BuildRequest& req, const manifest::UserConfig& confi
     result.exit_code = run_ninja(run);
     lap("ninja finished");
     if (!renamed_self.empty() && !fs::exists(main_output, ec)) fsx::rename_replace(renamed_self, main_output);
+    check_dll_exports(plan, tc, driver);
 
     result.seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
     if (result.exit_code != 0) {

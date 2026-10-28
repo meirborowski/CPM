@@ -426,6 +426,30 @@ void set_config(const fs::path& home, const std::string& key, const std::string&
     manifest::set_user_config(home, key, value);
 }
 
+MsvcAction msvc_action(bool has_msvc, bool has_winget) {
+    if (has_msvc) return MsvcAction::Use;
+    return has_winget ? MsvcAction::InstallBuildTools : MsvcAction::Unavailable;
+}
+
+std::vector<std::string> build_tools_command() {
+    return {"winget", "install", "--id", "Microsoft.VisualStudio.BuildTools", "--exact", "--source", "winget",
+            "--accept-package-agreements", "--accept-source-agreements", "--override",
+            "--wait --passive --add Microsoft.VisualStudio.Workload.VCTools --includeRecommended"};
+}
+
+// After `cpm setup --compiler msvc`: MSVC becomes the machine's choice as a request, which follows Visual Studio's
+// updates, where a path to one toolset's cl.exe would not.
+void choose_msvc(const fs::path& home) {
+    std::vector<toolchain::Found> found = toolchain::list_compilers(home);
+    if (toolchain::best_match(found, {toolchain::Family::Msvc, std::nullopt, "msvc"}) == nullptr) {
+        throw Error("Visual Studio's C++ tools were installed, but CPM doesn't find them",
+                    "check in the Visual Studio Installer that \"Desktop development with C++\" is installed, then run "
+                    "cpm toolchain use msvc");
+    }
+    set_config(home, "toolchain", "msvc");
+    manifest::set_user_config(home, "cxx", std::nullopt);
+}
+
 // After `cpm setup --compiler`: the newest compiler of that family CPM now finds becomes the machine's choice.
 void choose_installed(const fs::path& home, toolchain::Family family) {
     std::vector<toolchain::Found> found = toolchain::list_compilers(home);
@@ -458,13 +482,33 @@ int run(const Options& options, const fs::path& home) {
     }
 
 #if defined(_WIN32)
+    std::optional<MsvcAction> msvc;  // --compiler msvc
+    if (options.compiler == "msvc") {
+        bool has_msvc = toolchain::best_match(toolchain::list_compilers(home), {toolchain::Family::Msvc, std::nullopt, "msvc"}) != nullptr;
+        msvc = msvc_action(has_msvc, proc::find_program("winget").has_value());
+        if (*msvc == MsvcAction::Unavailable) {
+            throw Error("installing Visual Studio's C++ tools needs winget, which this machine doesn't have",
+                        "download Visual Studio Build Tools from https://visualstudio.microsoft.com/downloads/, choose "
+                        "\"Desktop development with C++\", then run cpm setup --compiler msvc again");
+        }
+        if (*msvc == MsvcAction::InstallBuildTools) {
+            actions.push_back(std::format(
+                "install Visual Studio Build Tools 2026 with the C++ tools: {}\n    It downloads several gigabytes, Windows asks "
+                "for administrator rights, and answering yes accepts its license "
+                "(https://visualstudio.microsoft.com/license-terms/)",
+                proc::command_line(build_tools_command())));
+            need_ninja = false;  // Build Tools bring Ninja with their CMake tools
+        }
+        actions.push_back("make Visual Studio's MSVC this machine's compiler (\"toolchain\": \"msvc\" in $CPM_HOME/config.jsonc)");
+        need_compiler = false;  // not WinLibs GCC
+    }
     if (options.compiler == "clang") {
         throw Error("cpm setup can't install Clang on Windows yet",
                     "install llvm-mingw (github.com/mstorsjo/llvm-mingw) or MSYS2's mingw-w64-ucrt-x86_64-clang, then run "
                     "cpm toolchain use clang");
     }
     if (!state.git) notes.push_back("git is only needed for git dependencies; get it with: winget install --id Git.Git -e");
-    bool get_compiler = need_compiler || options.managed;
+    bool get_compiler = need_compiler || (options.managed && !msvc);
     bool get_ninja = need_ninja || options.managed;
     std::optional<PlatformTools> tools;
     if ((get_compiler || get_ninja) && !options.check) {
@@ -485,14 +529,19 @@ int run(const Options& options, const fs::path& home) {
             actions.push_back(std::format("download {} ({}) into {}", t.name, size_text(t.size), tools_dir(home)));
         }
         actions.push_back("point $CPM_HOME/config.jsonc at them");
-        act = [&] {
-            if (get_compiler) {
-                set_config(home, "cxx", paths::to_utf8(install_tool(*tools->compiler, "winlibs", home)));
-                manifest::set_user_config(home, "toolchain", std::nullopt);
-            }
-            if (get_ninja) set_config(home, "ninja", paths::to_utf8(install_tool(*tools->ninja, "ninja", home)));
-        };
     }
+    act = [&] {
+        if (msvc == MsvcAction::InstallBuildTools && run_command(build_tools_command()) != 0) {
+            throw Error("winget could not install Visual Studio Build Tools",
+                        "see winget's output above, or install them by hand from https://visualstudio.microsoft.com/downloads/");
+        }
+        if (msvc) choose_msvc(home);
+        if (get_compiler) {
+            set_config(home, "cxx", paths::to_utf8(install_tool(*tools->compiler, "winlibs", home)));
+            manifest::set_user_config(home, "toolchain", std::nullopt);
+        }
+        if (get_ninja) set_config(home, "ninja", paths::to_utf8(install_tool(*tools->ninja, "ninja", home)));
+    };
 #elif defined(__APPLE__)
     bool get_ninja = need_ninja || options.managed;
     bool clt_missing = proc::capture({.argv = {"xcode-select", "-p"}}).exit_code != 0;

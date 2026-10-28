@@ -69,6 +69,8 @@ std::string generate_ninja(const BuildPlan& plan, const toolchain::Driver& drive
         if (c.kind == CompileStep::Kind::Test) {
             vars.emplace_back("incs", "$incs " + ninja::args_value(plan.test_incs));
             if (!plan.test_defines.empty()) vars.emplace_back("defines", "$defines " + ninja::args_value(plan.test_defines));
+        } else if (c.kind == CompileStep::Kind::Core && !plan.source_defines.empty()) {
+            vars.emplace_back("defines", "$defines " + ninja::args_value(plan.source_defines));
         } else if (c.kind == CompileStep::Kind::Dependency) {
             vars.emplace_back("incs", ninja::args_value(c.incs));
             vars.emplace_back("defines", ninja::args_value(c.defines));

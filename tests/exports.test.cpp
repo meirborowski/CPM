@@ -8,6 +8,7 @@
 #include "build/exports.hpp"
 #include "build/layout.hpp"
 #include "build/ninja_gen.hpp"
+#include "build/ninja_writer.hpp"
 #include "build/pipeline.hpp"
 #include "build/plan.hpp"
 #include "core/env.hpp"
@@ -109,9 +110,10 @@ TEST(a_shared_library_exports_from_its_sources_and_imports_in_its_tests) {
     CHECK(has(plan.test_defines, "-DMY_LIB_API=__declspec(dllimport)"));
     CHECK(has(plan.test_defines, "-DCPM_TEST_API="));
 
+    // Quoted for the host's command interpreter: /bin/sh quotes the parentheses, cmd.exe's rules don't.
     std::string ninja = build::generate_ninja(plan, *toolchain::make_driver(fake(Os::Windows)));
-    CHECK(ninja.contains("  defines = $defines -DMY_LIB_API=__declspec(dllexport)\n"));
-    CHECK(ninja.contains("-DMY_LIB_API=__declspec(dllimport)"));
+    CHECK(ninja.contains("  defines = $defines " + build::ninja::args_value({"-DMY_LIB_API=__declspec(dllexport)"}) + "\n"));
+    CHECK(ninja.contains(build::ninja::args_value({"-DMY_LIB_API=__declspec(dllimport)"})));
 }
 
 TEST(a_static_library_and_an_executable_define_their_macros_empty) {
